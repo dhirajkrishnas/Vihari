@@ -1,0 +1,56 @@
+# ==========================================
+# Xcode & Swift Project .gitignore
+# ==========================================
+
+# User settings & personal workspace state
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcuserdatad/
+*.xcuserstate
+*.xcscmblueprint
+
+# Build output, DerivedData, and caches
+build/
+DerivedData/
+*.build/
+*.moved-aside
+*.xccheckout
+
+# Product bundles, archives, and symbols
+*.dSYM/
+*.ipa
+*.app
+*.xcarchive
+*.crash
+
+# Swift Package Manager
+.build/
+Packages/
+Package.pins
+
+# CocoaPods & Carthage (if used in future)
+Pods/
+Carthage/Build/
+
+# Fastlane (if used in future)
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Code coverage & profiling
+*.gcno
+*.gcda
+*.gcov
+*.profdata
+*.profraw
+
+# macOS system and thumbnail files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
