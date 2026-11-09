@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <g fill="#FFFFFF">
+    <!-- Left Bell Assembly -->
+    <!-- Mounting Stems -->
+    <rect x="330" y="320" width="22" height="60" rx="10" transform="rotate(-38 341 350)" />
+    <!-- Bell Dome (curved shell) -->
+    <path d="M 220 345 C 195 300 215 225 275 200 C 335 175 390 230 380 290 C 340 270 260 305 220 345 Z" />
+    <!-- Right Bell Assembly -->
+    <!-- Mounting Stems -->
+    <rect x="672" y="320" width="22" height="60" rx="10" transform="rotate(38 683 350)" />
+    <!-- Bell Dome -->
+    <path d="M 804 345 C 829 300 809 225 749 200 C 689 175 634 230 644 290 C 684 270 764 305 804 345 Z" />
+    <!-- Top Snooze Handle Bridge -->
+    <path d="M 445 285 C 445 235 470 215 512 215 C 554 215 579 235 579 285 L 553 285 C 553 252 538 239 512 239 C 486 239 471 252 471 285 Z" />
+    <rect x="496" y="275" width="32" height="20" rx="8" />
+  </g>
+</svg>

@@ -10,15 +10,18 @@ struct GlobeView: View {
     /// panel is up, because the map's insets follow it, and MapKit copes badly with inset changes
     /// while the camera moves (it draws only inside the insets and misreports its zoom limit).
     var attributionBottomInset: CGFloat = 0
-    /// Height of the detail panel covering the bottom while a city is open.
+    /// Height of the detail panel or sheet covering the bottom while a city is open.
     var detailBottomInset: CGFloat = 0
+    /// Where the space for the city starts at the top, below the city's name.
+    var detailTopInset: CGFloat = 56
     /// Side-by-side layouts: how much of the window's trailing side the city list covers (a city's
     /// detail opens in the same place). The globe and the city are framed in the space beside it;
     /// while a city is open the map reaches under it too, so the map fills the window.
     var trailingPaneWidth: CGFloat = 0
     /// False while the introduction has the window to itself; the globe is framed in all of it then.
     var showsTrailingPane = true
-    /// iPhone: the map fills the screen. Side-by-side layouts size the map to fit the globe beside the pane.
+    /// iPhone: the map fills the screen in every view. Side-by-side layouts size the map to fit the
+    /// globe beside the pane in orbit, and the starfield behind shows around it.
     var fillsScreen = false
     let onSelectCity: (PinnedCity) -> Void
 
@@ -33,32 +36,40 @@ struct GlobeView: View {
     var body: some View {
         GeometryReader { proxy in
             let layout = Layout(size: proxy.size, orbitBottomInset: orbitBottomInset, attributionBottomInset: attributionBottomInset,
-                                detailBottomInset: detailBottomInset, trailingPaneWidth: trailingPaneWidth,
-                                showsTrailingPane: showsTrailingPane, fillsScreen: fillsScreen)
+                                detailBottomInset: detailBottomInset, detailTopInset: detailTopInset,
+                                trailingPaneWidth: trailingPaneWidth, showsTrailingPane: showsTrailingPane, fillsScreen: fillsScreen)
             let blend = CGFloat(engine.detailBlend)
             let height = layout.orbitHeight + (layout.detailHeight - layout.orbitHeight) * blend
             let bottom = layout.orbitBottom + (layout.detailBottom - layout.orbitBottom) * blend
-            // Beside a side pane the map reaches under it as the globe grows (see MapFrame).
-            let width = layout.width + layout.extraWidth * CGFloat(engine.reach)
-            // On iPhone the city's map fades out behind the bottom panel; beside a side pane it doesn't.
-            let bottomFade = layout.fadesBehindPanel ? blend : 0
+            // Beside a side pane the map reaches under it once the globe is big (see MapFrame).
+            let reach = CGFloat(engine.reach)
+            let width = layout.width + layout.extraWidth * reach
+            // Its edge under the pane fades into the stars, until it reaches the window's edge.
+            let sideFade = layout.extraWidth > 0 ? layout.edgeFade * (1 - reach) / max(1, width) : 0
 
             map
                 // MapKit doesn't follow inset changes while the camera moves every frame, so the
-                // insets stay fixed and the frame itself moves; the engine scales the camera
-                // distance with the frame height so the zoom still follows its curve.
+                // insets stay fixed. On iPhone the frame stays put too, and the camera does the
+                // framing; beside a side pane the frame grows, and the engine scales the camera
+                // distance with its height so the zoom still follows its curve.
                 .safeAreaPadding(.vertical, layout.inset)
                 .frame(width: width, height: height)
                 .opacity(engine.mapOpacity)
-                // In the city view the map continues behind the glass panel.
+                // A fitted map (side-by-side layouts) softens its top edge in orbit and its edge under
+                // the pane, so MapKit's space blends into the starfield behind it.
                 .mask {
-                    // A fitted map (side-by-side layouts) also softens its top edge in orbit.
                     LinearGradient(stops: [
                         .init(color: fillsScreen ? .black : .black.opacity(blend), location: 0),
                         .init(color: .black, location: fillsScreen ? 0 : 0.12 * (1 - blend)),
-                        .init(color: .black, location: 1 - 0.3 * bottomFade),
-                        .init(color: .black.opacity(1 - bottomFade), location: 1)
+                        .init(color: .black, location: 1)
                     ], startPoint: .top, endPoint: .bottom)
+                }
+                .mask {
+                    LinearGradient(stops: [
+                        .init(color: .black, location: 0),
+                        .init(color: .black, location: 1 - sideFade),
+                        .init(color: .black.opacity(sideFade > 0 ? 0 : 1), location: 1)
+                    ], startPoint: .leading, endPoint: .trailing)
                 }
                 // The map's leading edge stays at the window's, with the Maps attribution.
                 .position(x: width / 2, y: bottom - height / 2)
@@ -74,7 +85,6 @@ struct GlobeView: View {
                                                          startLongitude: engine.longitude)
                 }
         }
-        .background(.black)
         .onAppear {
             engine.reduceMotion = reduceMotion
             engine.jump(toCity: selectedCity?.coordinate)
@@ -121,7 +131,7 @@ struct GlobeView: View {
     }
 
     /// Where the map sits. The insets never change (MapKit doesn't follow inset changes while the
-    /// camera moves every frame); only the frame moves and resizes.
+    /// camera moves every frame).
     ///
     /// At its farthest zoom MapKit always draws the Earth centred in the map view, at a fixed
     /// share of the view's height (for a view no wider than it's tall), whatever the insets.
@@ -137,11 +147,18 @@ struct GlobeView: View {
         let detailBottom: CGFloat
         /// Equal top and bottom insets, so the camera's centre stays at the centre of the globe.
         let inset: CGFloat
-        /// iPhone: the detail panel covers the bottom of the city's map, so the map fades out there.
-        let fadesBehindPanel: Bool
+        /// iPhone city view: how far above the map's middle the city sits, so it's above the sheet.
+        let focusLift: CGFloat
+        /// Side-by-side layouts: the globe sizes at which the map spreads under the pane (see MapFrame).
+        let reachStart: CGFloat
+        let reachEnd: CGFloat
+        /// Side-by-side layouts: how wide the map's fading edge under the pane is in orbit. It stops
+        /// short of the globe.
+        let edgeFade: CGFloat
 
         var mapFrame: GlobeCameraEngine.MapFrame {
-            .init(width: width, extraWidth: extraWidth, orbitHeight: orbitHeight, detailHeight: detailHeight)
+            .init(width: width, extraWidth: extraWidth, orbitHeight: orbitHeight, detailHeight: detailHeight,
+                  focusLift: focusLift, reachStart: reachStart, reachEnd: reachEnd)
         }
 
         /// The Earth's diameter as a share of the map view's height, at the farthest zoom.
@@ -149,14 +166,14 @@ struct GlobeView: View {
         private static let fittedGlobeRatio: CGFloat = 0.56
 
         init(size: CGSize, orbitBottomInset: CGFloat, attributionBottomInset: CGFloat, detailBottomInset: CGFloat,
-             trailingPaneWidth: CGFloat, showsTrailingPane: Bool, fillsScreen: Bool) {
+             detailTopInset: CGFloat, trailingPaneWidth: CGFloat, showsTrailingPane: Bool, fillsScreen: Bool) {
             let paneWidth = showsTrailingPane ? trailingPaneWidth : 0
             width = size.width - paneWidth
             extraWidth = paneWidth
-            fadesBehindPanel = detailBottomInset > 0
 
             // The Maps attribution sits just above the cards.
             let attributionY = size.height - attributionBottomInset - 4
+            var diameter = size.width
             if fillsScreen {
                 // Cover the whole screen, and run past the top just far enough that the globe
                 // clears the cards (or the intro panel) and the attribution.
@@ -167,20 +184,37 @@ struct GlobeView: View {
                 orbitBottom = size.height
             } else {
                 // Side-by-side layouts: size the map so the globe fits the space beside the pane.
-                let diameter = max(160, min(width - 32, attributionY - GlobeView.topClearance - 12))
+                diameter = max(160, min(width - 32, attributionY - GlobeView.topClearance - 12))
                 orbitHeight = diameter / Self.fittedGlobeRatio
                 let globeCenterY = (GlobeView.topClearance + attributionY) / 2
                 orbitBottom = globeCenterY + orbitHeight / 2
             }
             inset = max(0, orbitBottom - attributionY)
+            edgeFade = max(8, min(32, (width - diameter) / 2 - 2))
 
-            // City view: the attribution sits just above the panel and the city midway between
-            // the status bar and the panel; the map runs on behind the panel. The map is centred on
-            // the city, so the city sits no lower than leaves the map's top edge at the screen's.
+            // City view: the city sits midway between its name and the panel, or the window's bottom.
             let panelTop = size.height - detailBottomInset
-            detailBottom = panelTop + inset
-            let cityY = min(56 + panelTop, panelTop + inset) / 2
-            detailHeight = max(120, 2 * (detailBottom - cityY))
+            if fillsScreen {
+                // The map keeps its frame, so it still fills the screen behind the sheet; the camera
+                // lifts the city above the sheet instead.
+                detailHeight = orbitHeight
+                detailBottom = orbitBottom
+                focusLift = (orbitBottom - orbitHeight / 2) - (detailTopInset + panelTop) / 2
+                reachStart = 0
+                reachEnd = 0
+            } else {
+                // The map runs on behind the panel, and is centred on the city, so the city sits no
+                // lower than leaves the map's top edge at the window's.
+                detailBottom = panelTop + inset
+                let cityY = min(detailTopInset + panelTop, panelTop + inset) / 2
+                detailHeight = max(120, 2 * (detailBottom - cityY))
+                focusLift = 0
+                // The globe covers the space beside the pane once it reaches that space's farthest
+                // corner from the city.
+                let corner = hypot(width / 2, max(cityY, size.height - cityY))
+                reachStart = corner * 1.3
+                reachEnd = corner * 4
+            }
         }
     }
 }
@@ -229,7 +263,7 @@ final class GlobeImageryPrewarmer {
         for city in cities {
             for sample in GlobeCameraEngine.descentSamples(to: city.coordinate, orbitDistance: orbitDistance) {
                 // As the live map shows it: framed for the frame at this point of the flight.
-                let framed = GlobeCameraEngine.framing(sample.camera, blend: sample.blend, in: frame, orbitDistance: orbitDistance)
+                let framed = GlobeCameraEngine.framing(sample.camera, blend: sample.blend, in: frame)
                 let size = CGSize(width: frame.width + frame.extraWidth * framed.reach, height: frame.height(at: sample.blend))
                 jobs.append(job(cityID: city.id, camera: framed.camera, size: size))
             }

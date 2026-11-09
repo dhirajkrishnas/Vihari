@@ -13,6 +13,9 @@ struct CityCardsCarouselView: View {
     let onSelectCity: (PinnedCity) -> Void
     let onUnpinCity: (PinnedCity) -> Void
     let onAddCityTap: () -> Void
+    /// True while a city's sheet is up. The cards fade away meanwhile, so they don't show beside
+    /// the sheet or through its glass.
+    var isUnderSheet = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Every card's corner radius. It's measured where the first card rests, so the row's corners
@@ -45,6 +48,8 @@ struct CityCardsCarouselView: View {
             }
             .scrollTargetLayout()
         }
+        .opacity(isUnderSheet ? 0 : 1)
+        .allowsHitTesting(!isUnderSheet)
         // Margins rather than padding, so every card snaps into the same place.
         .contentMargins(Self.edgeInset, for: .scrollContent)
         .scrollTargetBehavior(.viewAligned)

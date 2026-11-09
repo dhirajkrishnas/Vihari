@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <g fill="#FFFFFF">
+    <!-- Hour Hand (10 o clock) -->
+    <rect x="502.0" y="430.0" width="20" height="110" rx="10.0" transform="rotate(-125 512 540)" />
+    <!-- Minute Hand (2 o clock) -->
+    <rect x="504.5" y="380.0" width="15" height="160" rx="7.5" transform="rotate(48 512 540)" />
+    <!-- Center Hub Pivot -->
+    <circle cx="512" cy="540" r="26" />
+    <circle cx="512" cy="540" r="14" fill="#E6EEF8" />
+  </g>
+</svg>

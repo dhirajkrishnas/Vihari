@@ -49,9 +49,19 @@ final class GlobeCameraEngine {
             latitude = capped * 180 / .pi
             longitude += atan2(sin(arc), cos(arc) * cos(capped)) * 180 / .pi
         }
+
+        /// Moves the centre south along its meridian by `arc` radians, so the old centre shows
+        /// straight above the new one. Near the South Pole it eases to a stop instead of passing it.
+        mutating func moveCentreSouth(byArc arc: Double) {
+            let target = latitude - arc * 180 / .pi
+            latitude = target < -80 ? -80 - 9 * tanh((-80 - target) / 9) : target
+        }
     }
 
     /// What the camera needs to know about the map view's frame.
+    ///
+    /// iPhone: the map fills the screen in every view. In the city view the camera looks a little
+    /// south of the city, so the city sits above the sheet (`focusLift`).
     ///
     /// Side-by-side layouts: in orbit the map spans the space beside the side pane, with the globe
     /// centred in it. While a city is open the map reaches under the pane, so it fills the window.
@@ -64,6 +74,13 @@ final class GlobeCameraEngine {
         var extraWidth: Double = 0
         var orbitHeight: Double = 0
         var detailHeight: Double = 0
+        /// City view: how far above the map's centre the city sits, in points.
+        var focusLift: Double = 0
+        /// Side-by-side layouts: the globe's radius on screen (points) at which the map starts to
+        /// reach under the pane, and at which it fills the window. By then the globe covers the space
+        /// beside the pane, so the map can move without moving the city or showing the globe's edge.
+        var reachStart: Double = 0
+        var reachEnd: Double = 0
 
         /// Detail frame height over orbit frame height; 1 until the view has a size
         /// (a zero height would make it infinite, and the camera distance invalid).
@@ -90,7 +107,7 @@ final class GlobeCameraEngine {
     private(set) var mapOpacity: Double = 1
 
     /// How far the map reaches under a side pane: 0 in orbit, 1 (the whole window) once the globe
-    /// fills it. See MapFrame.
+    /// covers the space beside the pane. See MapFrame.
     private(set) var reach: Double = 0
 
     @ObservationIgnored var reduceMotion = false
@@ -153,15 +170,20 @@ final class GlobeCameraEngine {
 
     // MARK: Flights
 
-    /// Jumps straight to a state, without motion (first appearance).
+    /// Jumps straight to a state (first appearance, or a new layout after the window changes shape).
     func jump(toCity coordinate: CLLocationCoordinate2D?) {
         flight = nil
         mapOpacity = 1
         if let coordinate {
-            camera = Camera(latitude: coordinate.latitude, longitude: coordinate.longitude,
-                            distance: Self.cityDistance, pitch: Self.cityPitch)
+            let target = Camera(latitude: coordinate.latitude, longitude: coordinate.longitude,
+                                distance: Self.cityDistance, pitch: Self.cityPitch)
             isInOrbit = false
             detailBlend = 1
+            // A map that starts out on a still camera can stay blank (a grey grid, no markers)
+            // until its camera moves, so the city settles in with a short, gentle zoom.
+            camera = target
+            camera.distance *= reduceMotion ? 1.02 : 1.25
+            start(Flight(kind: .descend, from: camera, to: target, fromBlend: 1, toBlend: 1, duration: 0.9))
         } else {
             camera.latitude = Self.orbitLatitude
             camera.pitch = 0
@@ -288,7 +310,7 @@ final class GlobeCameraEngine {
 
     /// Gives the map the camera, framed for the map's current frame.
     private func show() {
-        let framed = Self.framing(camera, blend: detailBlend, in: mapFrame, orbitDistance: orbitDistance)
+        let framed = Self.framing(camera, blend: detailBlend, in: mapFrame)
         if reach != framed.reach { reach = framed.reach }
         position = .camera(framed.camera.mapCamera)
     }
@@ -302,24 +324,50 @@ final class GlobeCameraEngine {
     /// The camera as the map is given it, and how far the map reaches under a side pane.
     ///
     /// MapKit's scale follows the view height, so the distance is scaled by as much as the frame
-    /// height has changed. Beside a side pane, the map widens toward the pane as the globe grows past
-    /// its orbit size, keeping the globe's left edge where it was in orbit, so the globe never runs
-    /// past the map's edge. MapKit centres the view in the map, so the camera then looks further east
-    /// by as much as the map's centre has moved, and what it looks at stays framed beside the pane.
-    nonisolated static func framing(_ camera: Camera, blend: Double, in frame: MapFrame,
-                                    orbitDistance: CLLocationDistance) -> (camera: Camera, reach: Double) {
+    /// height has changed. MapKit puts the point the camera looks at in the middle of the map, so to
+    /// show the city somewhere else the camera looks beside it:
+    /// - iPhone: south of the city, so the city sits above the sheet. This grows with `blend`.
+    /// - Beside a side pane: the map widens under the pane, so its middle moves right. The camera
+    ///   looks east of the city by as much, so the city stays in the middle of the space beside the pane.
+    ///   The map only reaches a little way under the pane (enough to hide the globe's edge behind it)
+    ///   until the globe covers the space beside the pane; only then does it spread under the rest.
+    ///   Spreading it earlier would slide the whole globe sideways while it grows.
+    nonisolated static func framing(_ camera: Camera, blend: Double, in frame: MapFrame) -> (camera: Camera, reach: Double) {
         var shown = camera
         shown.distance *= 1 + (frame.detailRatio - 1) * blend
-        guard frame.extraWidth > 0, frame.orbitHeight > 0 else { return (shown, 0) }
-
+        guard frame.orbitHeight > 0 else { return (shown, 0) }
         let focal = focalLength * frame.height(at: blend)
-        let growth = globeRadius(distance: shown.distance, pitch: shown.pitch, focal: focal)
-            - globeRadius(distance: orbitDistance, pitch: 0, focal: focalLength * frame.orbitHeight)
-        let shift = min(frame.extraWidth / 2, max(0, growth))
+
+        if frame.focusLift != 0, blend > 0 {
+            shown.moveCentreSouth(byArc: verticalArc(lift: frame.focusLift * blend, focal: focal,
+                                                     distance: shown.distance, pitch: shown.pitch))
+        }
+
+        guard frame.extraWidth > 0 else { return (shown, 0) }
+        let radius = globeRadius(distance: shown.distance, pitch: shown.pitch, focal: focal)
+        let shift = paneShift(globeRadius: radius, in: frame)
         guard shift > 0 else { return (shown, 0) }
         shown.moveCentreEast(byArc: groundArc(across: shift, focal: focal, distance: shown.distance))
-        return (shown, 2 * shift / frame.extraWidth)
+        return (shown, min(1, 2 * shift / frame.extraWidth))
     }
+
+    /// How far the map's middle moves right of the middle of the space beside a side pane, in points:
+    /// half the extra width the map reaches under the pane.
+    private nonisolated static func paneShift(globeRadius radius: Double, in frame: MapFrame) -> Double {
+        let half = frame.extraWidth / 2
+        // Once the globe is wider than the space beside the pane, the map reaches just under the
+        // pane's glass, so the globe's edge is cut off behind the glass rather than in the open.
+        let tuck = min(half, paneTuck)
+        let tucked = tuck * smoothstep((radius - (frame.width / 2 - paneTuck)) / paneTuck)
+        // Once the globe covers the space beside the pane, the map spreads under the rest of it.
+        guard frame.reachStart > 0, frame.reachEnd > frame.reachStart else { return tucked }
+        let spread = smootherstep(log(radius / frame.reachStart) / log(frame.reachEnd / frame.reachStart))
+        return tucked + (half - tucked) * spread
+    }
+
+    /// How far the map reaches under a side pane while the globe is too small to cover the space
+    /// beside it, in points (half of it, as the map's middle moves by half its widening).
+    private nonisolated static let paneTuck = 20.0
 
     /// The Earth's radius on screen, in points.
     private nonisolated static func globeRadius(distance: CLLocationDistance, pitch: Double, focal: Double) -> Double {
@@ -338,6 +386,38 @@ final class GlobeCameraEngine {
         // How far along that line of sight it meets the ground (or grazes it, at the horizon).
         let reach = centre * cos(angle) - sqrt(max(0, r * r - centre * centre * sin(angle) * sin(angle)))
         return asin(min(1, reach * sin(angle) / r))
+    }
+
+    /// The angle, seen from the Earth's centre, between the ground at the view's centre and the
+    /// ground `lift` points straight above it, for a camera tilted `pitch` degrees.
+    private nonisolated static func verticalArc(lift: Double, focal: Double, distance: CLLocationDistance,
+                                                pitch: Double) -> Double {
+        let r = earthRadius
+        let tilt = pitch * .pi / 180
+        // In the plane of the view's centre meridian: the Earth's centre at the origin, the ground at
+        // the view's centre straight up the y axis, north along x. The camera is south of it, tilted.
+        let cameraX = -distance * sin(tilt), cameraY = r + distance * cos(tilt)
+        // The line of sight `lift` points above the view's centre.
+        let k = lift / focal
+        var dx = sin(tilt) + k * cos(tilt), dy = -cos(tilt) + k * sin(tilt)
+        let length = (dx * dx + dy * dy).squareRoot()
+        dx /= length
+        dy /= length
+        // Where it meets the ground (at the horizon if it passes over it).
+        let b = cameraX * dx + cameraY * dy
+        let c = cameraX * cameraX + cameraY * cameraY - r * r
+        let t = -b - max(0, b * b - c).squareRoot()
+        return atan2(cameraX + t * dx, cameraY + t * dy)
+    }
+
+    private nonisolated static func smoothstep(_ x: Double) -> Double {
+        let t = min(1, max(0, x))
+        return t * t * (3 - 2 * t)
+    }
+
+    private nonisolated static func smootherstep(_ x: Double) -> Double {
+        let t = min(1, max(0, x))
+        return t * t * t * (t * (t * 6 - 15) + 10)
     }
 
     // MARK: Math

@@ -4,6 +4,8 @@ struct ResponsiveLayoutContainer: View {
     @Bindable var store: CityStore
     @Binding var showingAddSheet: Bool
     @Binding var showingSettingsSheet: Bool
+    /// Set while a city's detail is up as a sheet (iPhone). Other sheets can't open over it.
+    @Binding var showingCitySheet: Bool
     /// While onboarding runs, only the globe shows; the intro panel sits over it.
     var isOnboarding = false
 
@@ -12,26 +14,47 @@ struct ResponsiveLayoutContainer: View {
     #endif
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The height of the open city's name over the map.
+    @ScaledMetric(relativeTo: .largeTitle) private var headingHeight: CGFloat = 41
 
-    /// One motion for every globe ⇄ city change, so panel, cards and camera move together.
-    private let panelAnimation = Animation.smooth(duration: 0.55)
+    /// One motion for every globe ⇄ city change in this layout's own views.
+    private let panelAnimation = Animation.smooth(duration: 0.5)
 
-    /// The city cards' scroll position. It's kept here because the cards leave while a city is open.
+    /// The city cards' scroll position. It's kept here because the layout can be rebuilt.
     @State private var cardsPosition = ScrollPosition(idType: PinnedCity.ID.self)
+    /// True while the single-column layout shows, where a city opens in a sheet.
+    @State private var isCompact = false
+    /// The city sheet's resting height, for a screen of the current height.
+    @State private var citySheetHeight: CGFloat = 480
+    /// The city last shown in the sheet. It stays set after the city closes, so the sheet keeps
+    /// its content while it slides away.
+    @State private var sheetCity: PinnedCity?
 
     var body: some View {
         GeometryReader { geometry in
+            let wide = isWide(geometry.size)
             ZStack {
                 StarryBackgroundView()
 
-                if isWide(geometry.size) {
+                if wide {
                     wideLayout(geometry)
                 } else {
-                    compactLayout(geometry.size)
+                    compactLayout(geometry)
                 }
+            }
+            .onChange(of: wide, initial: true) { _, wide in isCompact = !wide }
+            .onChange(of: Self.screenHeight(geometry), initial: true) { _, height in
+                citySheetHeight = Self.citySheetHeight(screenHeight: height)
             }
         }
         .sensoryFeedback(.selection, trigger: store.selectedCityID)
+        #if os(iOS)
+        .sheet(isPresented: citySheetIsPresented) { citySheet }
+        .onChange(of: usesCitySheet, initial: true) { _, presented in showingCitySheet = presented }
+        .onChange(of: store.selectedCity, initial: true) { _, city in
+            if let city { sheetCity = city }
+        }
+        #endif
     }
 
     private func isWide(_ size: CGSize) -> Bool {
@@ -55,23 +78,39 @@ struct ResponsiveLayoutContainer: View {
         }
     }
 
+    /// The open city's name, as a heading over the map at the top left.
+    private func cityHeading(_ city: PinnedCity) -> some View {
+        Text(city.name)
+            .font(.largeTitle.bold())
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .foregroundStyle(.white)
+            // Keeps it readable over bright imagery.
+            .shadow(color: .black.opacity(0.6), radius: 12, y: 2)
+            .accessibilityAddTraits(.isHeader)
+            .allowsHitTesting(false)
+            .id(city.id)
+            .transition(reduceMotion ? .opacity : AnyTransition(.blurReplace))
+    }
+
     // MARK: - iPad / Mac / wide split layout
 
     private func wideLayout(_ geometry: GeometryProxy) -> some View {
         let size = geometry.size
-        // The city list's pane along the trailing edge. A city's detail opens in the same place.
+        // The pane along the trailing edge: the city list, or a city's detail in its place.
         let paneWidth = size.width * 0.48
         let cityIsOpen = store.selectedCity != nil
 
         // Each layer that comes and goes has a zIndex: a view leaving a ZStack without one can be
         // drawn behind the others, so it seems to vanish instead of sliding away.
         return ZStack(alignment: .trailing) {
-            // The globe has the whole window. It's framed beside the pane and runs on underneath it,
-            // so while a city is open its map reaches the far edge, behind the detail.
+            // The globe has the whole window. It's framed beside the pane, and while a city is open
+            // its map reaches under the pane to the window's far edge, behind the glass.
             GlobeView(
                 cities: store.cities,
                 selectedCity: store.selectedCity,
-                // Measured from the window's edge, since the pane's backdrop runs into the safe area.
+                detailTopInset: geometry.safeAreaInsets.top + 16 + headingHeight,
+                // Measured from the window's edge, since the map runs under the safe area there.
                 trailingPaneWidth: paneWidth + geometry.safeAreaInsets.trailing,
                 showsTrailingPane: !isOnboarding,
                 onSelectCity: select
@@ -87,29 +126,38 @@ struct ResponsiveLayoutContainer: View {
                     .transition(.opacity)
                     .zIndex(1)
 
-                // The city list, with a city's detail over it while one is open. The list stays
-                // alive underneath, so it's still scrolled to the same place when the city closes.
+                // One glass panel holds the list, and a city's detail slides in over it like a pushed
+                // page. The list stays alive underneath, so it's still scrolled to the same place
+                // when the city closes.
                 ZStack {
-                    // The list's backdrop fades away while a city is open, so the map fills the window.
-                    Color.black
-                        .ignoresSafeArea()
-                        .opacity(cityIsOpen ? 0 : 1)
-
                     cityList
+                        .offset(x: cityIsOpen && !reduceMotion ? -paneWidth * 0.3 : 0)
                         .opacity(cityIsOpen ? 0 : 1)
                         .disabled(cityIsOpen)
                         .accessibilityHidden(cityIsOpen)
 
                     if let selected = store.selectedCity {
-                        detailView(for: selected)
-                            .padding(12)
+                        detailView(for: selected, showsBackground: false)
                             .transition(slide(from: .trailing))
                             .zIndex(1)
                     }
                 }
+                .clipShape(.rect(cornerRadius: Self.panelCornerRadius, style: .continuous))
+                .background { Color.clear.floatingGlass(cornerRadius: Self.panelCornerRadius) }
+                .padding(12)
                 .frame(width: paneWidth)
                 .transition(slide(from: .trailing))
                 .zIndex(2)
+            }
+
+            if let city = store.selectedCity {
+                cityHeading(city)
+                    .padding(.leading, 20)
+                    .padding(.top, 16)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    // Clear of the Settings button at the pane's edge.
+                    .padding(.trailing, paneWidth + 84)
+                    .zIndex(3)
             }
         }
     }
@@ -135,7 +183,7 @@ struct ResponsiveLayoutContainer: View {
 
                 AddCityCardButton(style: .inline) { showingAddSheet = true }
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 20)
             .padding(.top, 24)
             .padding(.bottom, 30)
         }
@@ -144,22 +192,28 @@ struct ResponsiveLayoutContainer: View {
 
     // MARK: - iPhone single-screen layout
 
-    private func compactLayout(_ size: CGSize) -> some View {
-        let totalHeight = size.height
+    private func compactLayout(_ geometry: GeometryProxy) -> some View {
+        let totalHeight = geometry.size.height
         // Cards float just above the bottom edge, inset the same as from the sides.
         let cardsHeight = LiquidGlassCityCard.floatingSize(for: dynamicTypeSize).height + 2 * CityCardsCarouselView.edgeInset
-        let panelHeight = totalHeight * 0.64
         // The globe sits above the cards, or above the intro panel while onboarding.
         // (The globe ignores the safe area, so this is measured from the screen's bottom edge.)
         let orbitBottomInset = isOnboarding ? totalHeight * 0.42 : cardsHeight
+        #if os(iOS)
+        let detailHeight = Self.citySheetVisibleHeight(sheetHeight: citySheetHeight)
+        #else
+        let detailHeight = totalHeight * 0.64
+        #endif
 
         return ZStack(alignment: .top) {
+            // The map fills the screen in every view. While a city is open it runs on behind the sheet.
             GlobeView(
                 cities: store.cities,
                 selectedCity: store.selectedCity,
                 orbitBottomInset: orbitBottomInset,
                 attributionBottomInset: cardsHeight,
-                detailBottomInset: panelHeight,
+                detailBottomInset: detailHeight,
+                detailTopInset: geometry.safeAreaInsets.top + 8 + headingHeight,
                 fillsScreen: true,
                 onSelectCity: select
             )
@@ -178,8 +232,10 @@ struct ResponsiveLayoutContainer: View {
                 .zIndex(1)
             }
 
-            // Bottom quarter: the city cards, ending with an Add City card
-            if store.selectedCity == nil && !isOnboarding {
+            // Bottom: the city cards, ending with an Add City card. On iPhone they stay (faded out)
+            // while a city's sheet is up, so they're back, still scrolled to the same card, the
+            // moment it closes.
+            if !isOnboarding && (Self.opensCitiesInSheet || store.selectedCity == nil) {
                 VStack {
                     Spacer()
                     CityCardsCarouselView(
@@ -189,7 +245,8 @@ struct ResponsiveLayoutContainer: View {
                         alarmsProvider: { store.alarms(for: $0) },
                         onSelectCity: select,
                         onUnpinCity: { store.removeCity($0) },
-                        onAddCityTap: { showingAddSheet = true }
+                        onAddCityTap: { showingAddSheet = true },
+                        isUnderSheet: Self.opensCitiesInSheet && store.selectedCity != nil
                     )
                     .frame(height: cardsHeight)
                 }
@@ -198,28 +255,91 @@ struct ResponsiveLayoutContainer: View {
                 .zIndex(2)
             }
 
-            // City detail rises from the bottom when a city is selected
+            #if !os(iOS)
+            // Elsewhere the city's detail rises from the bottom when a city is selected.
             if let selected = store.selectedCity {
                 VStack {
                     Spacer()
                     detailView(for: selected)
-                        .frame(height: panelHeight)
+                        .frame(height: detailHeight)
                 }
                 .ignoresSafeArea(edges: .bottom)
-                .transition(rise(by: panelHeight))
+                .transition(rise(by: detailHeight))
                 .zIndex(3)
+            }
+            #endif
+
+            if let city = store.selectedCity {
+                cityHeading(city)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .zIndex(4)
             }
         }
     }
 
+    // MARK: - City sheet (iPhone)
+
+    #if os(iOS)
+    private static let opensCitiesInSheet = true
+
+    private var usesCitySheet: Bool {
+        isCompact && store.selectedCity != nil
+    }
+
+    private var citySheetIsPresented: Binding<Bool> {
+        Binding(
+            get: { usesCitySheet },
+            set: { presented in
+                // Swiped down: close the city. A sheet that closes because the layout widened (the
+                // phone turned) leaves the city open beside the list instead.
+                if !presented, isCompact, store.selectedCity != nil { select(nil) }
+            }
+        )
+    }
+
+    /// The open city's detail in a native sheet. It rests partway up, leaving the city in view on
+    /// the map above it, and can be pulled up to full height. The map stays live behind it.
+    @ViewBuilder
+    private var citySheet: some View {
+        if let city = store.selectedCity ?? sheetCity {
+            let resting = PresentationDetent.height(citySheetHeight)
+            detailView(for: city, showsBackground: false)
+                .presentationDetents([resting, .large])
+                .presentationBackgroundInteraction(.enabled(upThrough: resting))
+        }
+    }
+
+    /// How far up the screen the resting sheet reaches, from the bottom edge. Measured on iOS 27:
+    /// a resting sheet floats 8 pt above the bottom edge and stands 13 pt taller than its detent.
+    private static func citySheetVisibleHeight(sheetHeight: CGFloat) -> CGFloat {
+        sheetHeight + 21
+    }
+    #else
+    private static let opensCitiesInSheet = false
+    #endif
+
+    /// How tall the resting city sheet is.
+    private static func citySheetHeight(screenHeight: CGFloat) -> CGFloat {
+        (screenHeight * 0.55).rounded()
+    }
+
+    private static func screenHeight(_ geometry: GeometryProxy) -> CGFloat {
+        geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
+    }
+
     // MARK: - Shared
 
-    private func detailView(for city: PinnedCity) -> some View {
+    private static let panelCornerRadius: CGFloat = 34
+
+    private func detailView(for city: PinnedCity, showsBackground: Bool = true) -> some View {
         CityDetailView(
             city: city,
             weather: store.weatherState(for: city),
             alarms: store.alarms(for: city),
             initialTab: OnboardingFlow.shared.stage == .alarmPermission ? .alarms : .weather,
+            showsBackground: showsBackground,
             onClose: { select(nil) },
             onSetAlarmEnabled: { store.setAlarm($0, enabled: $1) },
             onDeleteAlarm: { store.deleteAlarm($0) },

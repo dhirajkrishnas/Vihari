@@ -5,6 +5,8 @@ struct ContentView: View {
     @State private var onboarding = OnboardingFlow.shared
     @State private var showingAddSheet = false
     @State private var showingSettingsSheet = false
+    /// True while a city's detail is up in its own sheet (iPhone).
+    @State private var showingCitySheet = false
     /// A city pinned from onboarding, opened once the search sheet has gone.
     @State private var firstCity: PinnedCity?
     @Environment(\.scenePhase) private var scenePhase
@@ -15,6 +17,7 @@ struct ContentView: View {
                 store: store,
                 showingAddSheet: $showingAddSheet,
                 showingSettingsSheet: $showingSettingsSheet,
+                showingCitySheet: $showingCitySheet,
                 isOnboarding: onboarding.stage == .intro
             )
 
@@ -53,7 +56,7 @@ struct ContentView: View {
 
     /// Menu commands, available while no sheet is up. Settings waits until the introduction is done.
     private var sceneActions: SceneActions? {
-        guard !showingAddSheet, !showingSettingsSheet else { return nil }
+        guard !showingAddSheet, !showingSettingsSheet, !showingCitySheet else { return nil }
         return SceneActions(
             addCity: { showingAddSheet = true },
             openSettings: onboarding.stage == .intro ? nil : { showingSettingsSheet = true }

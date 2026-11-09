@@ -23,6 +23,8 @@ struct CityDetailView: View {
     let onSaveAlarm: (CityAlarm) -> Void
     let onRetryWeather: () -> Void
     let onDeleteCity: () -> Void
+    /// False where the detail sits in a sheet or panel that brings its own glass.
+    var showsBackground = true
 
     @State private var selectedTab: DetailTab
     @State private var confirmingUnpin = false
@@ -33,6 +35,7 @@ struct CityDetailView: View {
         weather: WeatherState,
         alarms: [CityAlarm],
         initialTab: DetailTab = .weather,
+        showsBackground: Bool = true,
         onClose: @escaping () -> Void,
         onSetAlarmEnabled: @escaping (CityAlarm, Bool) -> Void,
         onDeleteAlarm: @escaping (CityAlarm) -> Void,
@@ -49,6 +52,7 @@ struct CityDetailView: View {
         self.onSaveAlarm = onSaveAlarm
         self.onRetryWeather = onRetryWeather
         self.onDeleteCity = onDeleteCity
+        self.showsBackground = showsBackground
         _selectedTab = State(initialValue: initialTab)
     }
 
@@ -74,9 +78,11 @@ struct CityDetailView: View {
         }
         .background {
             // The glass runs under the home indicator while the content stays inside the safe area.
-            Color.clear
-                .floatingGlass(cornerRadius: 34)
-                .ignoresSafeArea(edges: .bottom)
+            if showsBackground {
+                Color.clear
+                    .floatingGlass(cornerRadius: 34)
+                    .ignoresSafeArea(edges: .bottom)
+            }
         }
         .confirmationDialog("Unpin \(city.name)?", isPresented: $confirmingUnpin, titleVisibility: .visible) {
             Button("Unpin City", role: .destructive, action: onDeleteCity)
@@ -148,19 +154,18 @@ struct CityDetailView: View {
         )
     }
 
+    /// The city's local time. Its name is the heading over the map, above this panel.
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
             TimelineView(.everyMinute) { context in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(city.name)
-                        .font(.largeTitle.bold())
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    Text("\(settings.formatTime(date: context.date, in: city.timeZone)) · \(city.dayDifferenceStatus(date: context.date)), \(city.relativeTimeDifference(date: context.date))")
-                        .font(.subheadline)
+                    Text(settings.formatTime(date: context.date, in: city.timeZone))
+                        .font(.title2.weight(.semibold))
                         .monospacedDigit()
-                        .foregroundStyle(.secondary)
                         .contentTransition(.numericText())
+                    Text("\(city.dayDifferenceStatus(date: context.date)), \(city.relativeTimeDifference(date: context.date))")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .ignore)
