@@ -6,12 +6,8 @@
 	<array>
 		<string>com.dhirajkrishnasimhadri.Vihari.refresh</string>
 	</array>
-	<key>CFBundleDisplayName</key>
-	<string>Vihari</string>
 	<key>NSAlarmKitUsageDescription</key>
 	<string>Vihari rings your alarms at the exact local time of the cities you pin, even while you travel.</string>
-	<key>NSSupportsLiveActivities</key>
-	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

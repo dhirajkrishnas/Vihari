@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		2152997330A22BC300CBB18D /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2152997230A22BC300CBB18D /* WidgetKit.framework */; };
 		2152997530A22BC300CBB18D /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2152997430A22BC300CBB18D /* SwiftUI.framework */; };
-		2152998230A22BC500CBB18D /* VihariWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 2152997030A22BC300CBB18D /* VihariWidgetsExtension.appex */; platformFilters = (ios, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		2152998230A22BC500CBB18D /* VihariWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 2152997030A22BC300CBB18D /* VihariWidgetsExtension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -221,9 +221,7 @@
 /* Begin PBXTargetDependency section */
 		2152998130A22BC500CBB18D /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			platformFilters = (
-				ios,
-			);
+			platformFilter = ios;
 			target = 2152996F30A22BC300CBB18D /* VihariWidgetsExtension */;
 			targetProxy = 2152998030A22BC500CBB18D /* PBXContainerItemProxy */;
 		};
@@ -379,8 +377,10 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Vihari-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Vihari;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -425,8 +425,10 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Vihari-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Vihari;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
