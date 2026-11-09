@@ -9,7 +9,7 @@ struct CityAnnotationView: View {
     var body: some View {
         Button(action: onTap) {
             Circle()
-                .fill(isSelected ? Color.cyan : .white)
+                .fill(isSelected ? Color.accentColor : .white)
                 .frame(width: 10, height: 10)
                 .overlay { Circle().strokeBorder(.black.opacity(0.35), lineWidth: 1) }
                 // A 44 pt target around the small dot, so it's easy to hit.

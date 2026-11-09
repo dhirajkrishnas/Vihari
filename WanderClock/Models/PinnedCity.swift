@@ -86,6 +86,9 @@ nonisolated enum TimeZoneMath {
         let sign = seconds > 0 ? "+" : "−"
         let hours = abs(seconds) / 3600
         let minutes = (abs(seconds) % 3600) / 60
+        if minutes == 0, hours == 1 {
+            return String(localized: "\(sign)1 HR", comment: "One hour ahead or behind you, for example +1 HR")
+        }
         if minutes == 0 {
             return String(localized: "\(sign)\(hours) HRS", comment: "Hours ahead or behind you, for example +9 HRS")
         }

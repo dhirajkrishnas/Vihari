@@ -32,6 +32,9 @@ actor WeatherServiceManager {
         configuration.timeoutIntervalForRequest = 15
         configuration.timeoutIntervalForResource = 30
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.httpAdditionalHeaders = [
+            "User-Agent": "WanderClock/1.0 (Apple; com.dhirajkrishnasimhadri.WanderClock)"
+        ]
         session = URLSession(configuration: configuration)
 
         cacheFile = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?

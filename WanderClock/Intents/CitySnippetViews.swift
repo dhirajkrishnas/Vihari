@@ -74,7 +74,7 @@ struct CityAlarmSnippetView: View {
                 Spacer()
                 Label(alarmLabel, systemImage: "alarm.fill")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.cyan)
+                    .foregroundStyle(Color.tangerine)
                     .lineLimit(1)
             }
             Text(cityTimeFormatted)

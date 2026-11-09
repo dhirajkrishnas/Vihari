@@ -46,18 +46,6 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack {
-            HStack {
-                Spacer()
-                if !isLastPage {
-                    Button("Skip") { go(to: pages.count - 1) }
-                        .adaptiveGlassButtonStyle()
-                        .transition(.opacity)
-                }
-            }
-            .frame(height: 44)
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-
             Spacer()
 
             panel
@@ -65,6 +53,13 @@ struct OnboardingView: View {
                 .padding(.bottom, 8)
         }
         .animation(.smooth, value: page)
+        .toolbar {
+            if !isLastPage {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Skip") { go(to: pages.count - 1) }
+                }
+            }
+        }
     }
 
     private var panel: some View {

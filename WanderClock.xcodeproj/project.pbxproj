@@ -6,14 +6,63 @@
 	objectVersion = 90;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		2152997330A22BC300CBB18D /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2152997230A22BC300CBB18D /* WidgetKit.framework */; };
+		2152997530A22BC300CBB18D /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2152997430A22BC300CBB18D /* SwiftUI.framework */; };
+		2152998230A22BC500CBB18D /* WanderClockWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 2152997030A22BC300CBB18D /* WanderClockWidgetsExtension.appex */; platformFilters = (ios, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		2152998030A22BC500CBB18D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2152996F30A22BC300CBB18D;
+			remoteInfo = WanderClockWidgetsExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		2152998730A22BC500CBB18D /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				2152998230A22BC500CBB18D /* WanderClockWidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* WanderClock.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WanderClock.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2152997030A22BC300CBB18D /* WanderClockWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WanderClockWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		2152997230A22BC300CBB18D /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		2152997430A22BC300CBB18D /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		2152998330A22BC500CBB18D /* Exceptions for "WanderClockWidgets" folder in "WanderClockWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 2152996F30A22BC300CBB18D /* WanderClockWidgetsExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		000000000000000000000010 /* WanderClock */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = WanderClock;
+			sourceTree = "<group>";
+		};
+		2152997630A22BC300CBB18D /* WanderClockWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				2152998330A22BC500CBB18D /* Exceptions for "WanderClockWidgets" folder in "WanderClockWidgetsExtension" target */,
+			);
+			path = WanderClockWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -24,6 +73,13 @@
 			files = (
 			);
 		};
+		2152996D30A22BC300CBB18D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				2152997530A22BC300CBB18D /* SwiftUI.framework in Frameworks */,
+				2152997330A22BC300CBB18D /* WidgetKit.framework in Frameworks */,
+			);
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -31,6 +87,8 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000010 /* WanderClock */,
+				2152997630A22BC300CBB18D /* WanderClockWidgets */,
+				2152997130A22BC300CBB18D /* Frameworks */,
 				000000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -39,8 +97,18 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000120 /* WanderClock.app */,
+				2152997030A22BC300CBB18D /* WanderClockWidgetsExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		2152997130A22BC300CBB18D /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				2152997230A22BC300CBB18D /* WidgetKit.framework */,
+				2152997430A22BC300CBB18D /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -53,8 +121,12 @@
 				000000000000000120000000 /* Sources */,
 				000000000000000130000000 /* Frameworks */,
 				000000000000000140000000 /* Resources */,
+				2152998730A22BC500CBB18D /* Embed Foundation Extensions */,
 			);
 			buildRules = (
+			);
+			dependencies = (
+				2152998130A22BC500CBB18D /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				000000000000000000000010 /* WanderClock */,
@@ -64,6 +136,24 @@
 			productReference = 000000000000000000000120 /* WanderClock.app */;
 			productType = "com.apple.product-type.application";
 		};
+		2152996F30A22BC300CBB18D /* WanderClockWidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2152998430A22BC500CBB18D /* Build configuration list for PBXNativeTarget "WanderClockWidgetsExtension" */;
+			buildPhases = (
+				2152996C30A22BC300CBB18D /* Sources */,
+				2152996D30A22BC300CBB18D /* Frameworks */,
+				2152996E30A22BC300CBB18D /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				2152997630A22BC300CBB18D /* WanderClockWidgets */,
+			);
+			name = WanderClockWidgetsExtension;
+			productName = WanderClockWidgetsExtension;
+			productReference = 2152997030A22BC300CBB18D /* WanderClockWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -71,11 +161,14 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2630;
+				LastSwiftUpdateCheck = 2710;
 				LastUpgradeCheck = 2710;
 				TargetAttributes = {
 					000000000000000100000000 = {
 						CreatedOnToolsVersion = 26.3;
+					};
+					2152996F30A22BC300CBB18D = {
+						CreatedOnToolsVersion = 27.1;
 					};
 				};
 			};
@@ -94,12 +187,18 @@
 			projectRoot = "";
 			targets = (
 				000000000000000100000000 /* WanderClock */,
+				2152996F30A22BC300CBB18D /* WanderClockWidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		000000000000000140000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		2152996E30A22BC300CBB18D /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -112,7 +211,23 @@
 			files = (
 			);
 		};
+		2152996C30A22BC300CBB18D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		2152998130A22BC500CBB18D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilters = (
+				ios,
+			);
+			target = 2152996F30A22BC300CBB18D /* WanderClockWidgetsExtension */;
+			targetProxy = 2152998030A22BC500CBB18D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		000000000000000011000000 /* Debug configuration for PBXProject "WanderClock" */ = {
@@ -253,6 +368,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = Icon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = WanderClock/WanderClock.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -298,6 +414,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = Icon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = WanderClock/WanderClock.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -339,6 +456,69 @@
 			};
 			name = Release;
 		};
+		2152998530A22BC500CBB18D /* Debug configuration for PBXNativeTarget "WanderClockWidgetsExtension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6LVKYNJZBN;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WanderClockWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = WanderClockWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dhirajkrishnasimhadri.WanderClock.WanderClockWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		2152998630A22BC500CBB18D /* Release configuration for PBXNativeTarget "WanderClockWidgetsExtension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6LVKYNJZBN;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WanderClockWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = WanderClockWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dhirajkrishnasimhadri.WanderClock.WanderClockWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -355,6 +535,14 @@
 			buildConfigurations = (
 				000000000000000111000000 /* Debug configuration for PBXNativeTarget "WanderClock" */,
 				000000000000000112000000 /* Release configuration for PBXNativeTarget "WanderClock" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		2152998430A22BC500CBB18D /* Build configuration list for PBXNativeTarget "WanderClockWidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2152998530A22BC500CBB18D /* Debug configuration for PBXNativeTarget "WanderClockWidgetsExtension" */,
+				2152998630A22BC500CBB18D /* Release configuration for PBXNativeTarget "WanderClockWidgetsExtension" */,
 			);
 			defaultConfigurationName = Release;
 		};

@@ -4,6 +4,7 @@ struct ResponsiveLayoutContainer: View {
     @Bindable var store: CityStore
     @Binding var showingAddSheet: Bool
     @Binding var showingSettingsSheet: Bool
+    @Binding var showingAlarmsSheet: Bool
     /// Set while a city's detail is up as a sheet (iPhone). Other sheets can't open over it.
     @Binding var showingCitySheet: Bool
     /// While onboarding runs, only the globe shows; the intro panel sits over it.
@@ -14,9 +15,6 @@ struct ResponsiveLayoutContainer: View {
     #endif
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The height of the open city's name over the map.
-    @ScaledMetric(relativeTo: .largeTitle) private var headingHeight: CGFloat = 41
-
     /// One motion for every globe ⇄ city change in this layout's own views.
     private let panelAnimation = Animation.smooth(duration: 0.5)
 
@@ -29,6 +27,8 @@ struct ResponsiveLayoutContainer: View {
     /// The city last shown in the sheet. It stays set after the city closes, so the sheet keeps
     /// its content while it slides away.
     @State private var sheetCity: PinnedCity?
+    /// A city with alarms waiting for the person to confirm it should be unpinned.
+    @State private var cityPendingRemoval: PinnedCity?
 
     var body: some View {
         GeometryReader { geometry in
@@ -36,10 +36,12 @@ struct ResponsiveLayoutContainer: View {
             ZStack {
                 StarryBackgroundView()
 
-                if wide {
-                    wideLayout(geometry)
-                } else {
-                    compactLayout(geometry)
+                if geometry.size.width > 0 && geometry.size.height > 0 {
+                    if wide {
+                        wideLayout(geometry)
+                    } else {
+                        compactLayout(geometry)
+                    }
                 }
             }
             .onChange(of: wide, initial: true) { _, wide in isCompact = !wide }
@@ -48,6 +50,35 @@ struct ResponsiveLayoutContainer: View {
             }
         }
         .sensoryFeedback(.selection, trigger: store.selectedCityID)
+        #if os(iOS)
+        // Over the globe, the controls float as glass, as they do over the map in Maps. The system
+        // bar would lay a band of blur behind the city's name and set it in its own small title
+        // font. It still shows during the introduction, for its Skip button.
+        .toolbar(isOnboarding ? .automatic : .hidden, for: .navigationBar)
+        // A plain inset, not `safeAreaBar`: a bar would lay the same blur over the map's top edge.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !isOnboarding { topBar }
+        }
+        #else
+        .toolbar { navigationBar }
+        .navigationTitle(store.selectedCity?.name ?? "WanderClock")
+        #if os(macOS)
+        // The globe runs up under the window's toolbar.
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        #endif
+        #endif
+        .confirmationDialog(
+            Text("Unpin \(cityPendingRemoval?.name ?? "")?"),
+            isPresented: Binding(get: { cityPendingRemoval != nil }, set: { if !$0 { cityPendingRemoval = nil } }),
+            titleVisibility: .visible,
+            presenting: cityPendingRemoval
+        ) { city in
+            Button("Unpin City", role: .destructive) {
+                withAnimation(panelAnimation) { store.removeCity(city) }
+            }
+        } message: { city in
+            Text("Its \(store.alarms(for: city).count) alarms will be deleted too.")
+        }
         #if os(iOS)
         .sheet(isPresented: citySheetIsPresented) { citySheet }
         .onChange(of: usesCitySheet, initial: true) { _, presented in showingCitySheet = presented }
@@ -72,26 +103,97 @@ struct ResponsiveLayoutContainer: View {
         withAnimation(panelAnimation) { store.selectedCity = city }
     }
 
-    private var settingsButton: some View {
-        GlassIconButton(systemImage: "gearshape", accessibilityLabel: "Settings") {
-            showingSettingsSheet = true
+    /// Unpins a city straight away, or asks first when that would delete its alarms.
+    private func requestUnpin(_ city: PinnedCity) {
+        if store.alarms(for: city).isEmpty {
+            withAnimation(panelAnimation) { store.removeCity(city) }
+        } else {
+            cityPendingRemoval = city
         }
     }
 
-    /// The open city's name, as a heading over the map at the top left.
-    private func cityHeading(_ city: PinnedCity) -> some View {
-        Text(city.name)
-            .font(.largeTitle.bold())
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .foregroundStyle(.white)
-            // Keeps it readable over bright imagery.
-            .shadow(color: .black.opacity(0.6), radius: 12, y: 2)
-            .accessibilityAddTraits(.isHeader)
-            .allowsHitTesting(false)
-            .id(city.id)
-            .transition(reduceMotion ? .opacity : AnyTransition(.blurReplace))
+    // MARK: - Top bar
+
+    #if os(iOS)
+    /// The controls over the globe: Back and the open city's name at the leading end, and at the
+    /// trailing end Settings, which shares its glass with All Alarms on the globe.
+    private var topBar: some View {
+        GlassEffectContainer(spacing: 12) {
+            HStack(spacing: 12) {
+                if let city = store.selectedCity {
+                    GlassIconButton(systemImage: "chevron.backward", accessibilityLabel: "Back to Cities") {
+                        select(nil)
+                    }
+                    .keyboardShortcut(.cancelAction)
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+
+                    Text(city.name)
+                        .font(.title2.bold())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .foregroundStyle(.white)
+                        // Keeps the name legible over bright imagery, with no band of blur behind it.
+                        .shadow(color: .black.opacity(0.6), radius: 10, y: 1)
+                        .accessibilityAddTraits(.isHeader)
+                        .id(city.id)
+                        .transition(.opacity)
+                }
+
+                Spacer(minLength: 0)
+
+                GlassIconGroup {
+                    if store.selectedCity == nil {
+                        Button("Alarms", systemImage: "alarm") { showingAlarmsSheet = true }
+                            .transition(.opacity)
+                    }
+                    Button("Settings", systemImage: "gearshape") { showingSettingsSheet = true }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
     }
+    #else
+    /// The window's toolbar: Back beside the navigation title, and at the trailing end Settings,
+    /// grouped with All Alarms on the globe. The system gives the buttons their glass.
+    @ToolbarContentBuilder
+    private var navigationBar: some ToolbarContent {
+        if !isOnboarding {
+            if store.selectedCity != nil {
+                ToolbarItem(placement: .navigation) {
+                    Button { select(nil) } label: {
+                        Label("Back", systemImage: "chevron.backward")
+                    }
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityLabel("Back to Cities")
+                }
+            }
+            ToolbarItemGroup(placement: .primaryAction) {
+                if store.selectedCity == nil {
+                    Button { showingAlarmsSheet = true } label: {
+                        Label("Alarms", systemImage: "alarm")
+                    }
+                }
+                settingsButton
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var settingsButton: some View {
+        #if os(macOS)
+        // The Mac keeps settings in their own window (WanderClock > Settings…).
+        SettingsLink {
+            Label("Settings", systemImage: "gearshape")
+        }
+        #else
+        Button { showingSettingsSheet = true } label: {
+            Label("Settings", systemImage: "gearshape")
+        }
+        #endif
+    }
+    #endif
 
     // MARK: - iPad / Mac / wide split layout
 
@@ -109,7 +211,7 @@ struct ResponsiveLayoutContainer: View {
             GlobeView(
                 cities: store.cities,
                 selectedCity: store.selectedCity,
-                detailTopInset: geometry.safeAreaInsets.top + 16 + headingHeight,
+                detailTopInset: geometry.safeAreaInsets.top + 12,
                 // Measured from the window's edge, since the map runs under the safe area there.
                 trailingPaneWidth: paneWidth + geometry.safeAreaInsets.trailing,
                 showsTrailingPane: !isOnboarding,
@@ -118,14 +220,6 @@ struct ResponsiveLayoutContainer: View {
             .ignoresSafeArea()
 
             if !isOnboarding {
-                settingsButton
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding(.trailing, paneWidth)
-                    .transition(.opacity)
-                    .zIndex(1)
-
                 // One glass panel holds the list, and a city's detail slides in over it like a pushed
                 // page. The list stays alive underneath, so it's still scrolled to the same place
                 // when the city closes.
@@ -149,45 +243,63 @@ struct ResponsiveLayoutContainer: View {
                 .transition(slide(from: .trailing))
                 .zIndex(2)
             }
-
-            if let city = store.selectedCity {
-                cityHeading(city)
-                    .padding(.leading, 20)
-                    .padding(.top, 16)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    // Clear of the Settings button at the pane's edge.
-                    .padding(.trailing, paneWidth + 84)
-                    .zIndex(3)
-            }
         }
     }
 
+    /// The pinned cities, under a header with the Add button. Swipe a city toward the leading
+    /// edge (or use its context menu) to unpin it.
     private var cityList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center) {
                 Text("Cities")
                     .font(.largeTitle.bold())
                     .accessibilityAddTraits(.isHeader)
-                    .padding(.bottom, 8)
-
-                ForEach(store.cities) { city in
-                    LiquidGlassCityCard(
-                        city: city,
-                        weather: store.weatherState(for: city),
-                        alarms: store.alarms(for: city),
-                        style: .inline,
-                        onSelect: { select(city) }
-                    )
-                    .contextMenu { unpinButton(for: city) }
+                Spacer(minLength: 12)
+                GlassIconButton(systemImage: "plus", accessibilityLabel: "Add City", prominent: true) {
+                    showingAddSheet = true
                 }
-
-                AddCityCardButton(style: .inline) { showingAddSheet = true }
             }
             .padding(.horizontal, 20)
-            .padding(.top, 24)
-            .padding(.bottom, 30)
+            .padding(.top, 20)
+            .padding(.bottom, 12)
+
+            if store.cities.isEmpty {
+                ContentUnavailableView {
+                    Label("No Cities", systemImage: "globe")
+                } description: {
+                    Text("Pin a city to see its time, weather and alarms.")
+                } actions: {
+                    Button("Add City") { showingAddSheet = true }
+                        .adaptiveGlassButtonStyle(prominent: true)
+                }
+                .frame(maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(store.cities) { city in
+                            LiquidGlassCityCard(
+                                city: city,
+                                weather: store.weatherState(for: city),
+                                alarms: store.alarms(for: city),
+                                style: .inline,
+                                onSelect: { select(city) }
+                            )
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) { requestUnpin(city) } label: {
+                                    Label("Unpin", systemImage: "pin.slash")
+                                }
+                            }
+                            .contextMenu { unpinButton(for: city) }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 4)
+                    .padding(.bottom, 30)
+                }
+                .swipeActionsContainer()
+                .scrollIndicators(.hidden)
+            }
         }
-        .scrollIndicators(.hidden)
     }
 
     // MARK: - iPhone single-screen layout
@@ -213,7 +325,7 @@ struct ResponsiveLayoutContainer: View {
                 orbitBottomInset: orbitBottomInset,
                 attributionBottomInset: cardsHeight,
                 detailBottomInset: detailHeight,
-                detailTopInset: geometry.safeAreaInsets.top + 8 + headingHeight,
+                detailTopInset: geometry.safeAreaInsets.top + 8,
                 fillsScreen: true,
                 onSelectCity: select
             )
@@ -221,16 +333,6 @@ struct ResponsiveLayoutContainer: View {
 
             // As in the wide layout, each layer that comes and goes has a zIndex, so it stays in
             // front of the globe while it animates away.
-            if store.selectedCity == nil && !isOnboarding {
-                HStack {
-                    Spacer()
-                    settingsButton
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .transition(.opacity)
-                .zIndex(1)
-            }
 
             // Bottom: the city cards, ending with an Add City card. On iPhone they stay (faded out)
             // while a city's sheet is up, so they're back, still scrolled to the same card, the
@@ -244,7 +346,7 @@ struct ResponsiveLayoutContainer: View {
                         weatherProvider: { store.weatherState(for: $0) },
                         alarmsProvider: { store.alarms(for: $0) },
                         onSelectCity: select,
-                        onUnpinCity: { store.removeCity($0) },
+                        onUnpinCity: requestUnpin,
                         onAddCityTap: { showingAddSheet = true },
                         isUnderSheet: Self.opensCitiesInSheet && store.selectedCity != nil
                     )
@@ -268,14 +370,6 @@ struct ResponsiveLayoutContainer: View {
                 .zIndex(3)
             }
             #endif
-
-            if let city = store.selectedCity {
-                cityHeading(city)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .zIndex(4)
-            }
         }
     }
 
@@ -308,6 +402,8 @@ struct ResponsiveLayoutContainer: View {
             detailView(for: city, showsBackground: false)
                 .presentationDetents([resting, .large])
                 .presentationBackgroundInteraction(.enabled(upThrough: resting))
+                // Only one sheet can be up per presenter, so Settings opens over this one.
+                .sheet(isPresented: $showingSettingsSheet) { SettingsView(store: store) }
         }
     }
 
@@ -343,15 +439,8 @@ struct ResponsiveLayoutContainer: View {
             onClose: { select(nil) },
             onSetAlarmEnabled: { store.setAlarm($0, enabled: $1) },
             onDeleteAlarm: { store.deleteAlarm($0) },
-            onSaveAlarm: { alarm in
-                if store.alarms.contains(where: { $0.id == alarm.id }) {
-                    store.updateAlarm(alarm)
-                } else {
-                    store.addAlarm(alarm)
-                }
-            },
-            onRetryWeather: { store.loadWeather(for: city, force: true) },
-            onDeleteCity: { withAnimation(panelAnimation) { store.removeCity(city) } }
+            onSaveAlarm: { store.saveAlarm($0) },
+            onRetryWeather: { store.loadWeather(for: city, force: true) }
         )
         .id(city.id)
     }
@@ -369,7 +458,7 @@ struct ResponsiveLayoutContainer: View {
 
     private func unpinButton(for city: PinnedCity) -> some View {
         Button(role: .destructive) {
-            withAnimation { store.removeCity(city) }
+            requestUnpin(city)
         } label: {
             Label("Unpin \(city.name)", systemImage: "pin.slash")
         }

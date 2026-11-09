@@ -29,7 +29,7 @@ struct CityWeatherPageView: View {
                         Text("Check your connection and try again.")
                     } actions: {
                         Button("Try Again", action: onRetry)
-                            .buttonStyle(.bordered)
+                            .adaptiveGlassButtonStyle(prominent: true)
                     }
                     .frame(minHeight: 280)
                 }

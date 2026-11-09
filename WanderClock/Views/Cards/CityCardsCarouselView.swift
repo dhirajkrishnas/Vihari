@@ -44,7 +44,7 @@ struct CityCardsCarouselView: View {
                         }
                     }
                 }
-                AddCityCardButton(style: .floating, onTap: onAddCityTap)
+                AddCityCardButton(onTap: onAddCityTap)
             }
             .scrollTargetLayout()
         }
@@ -68,60 +68,28 @@ struct CityCardsCarouselView: View {
     }
 }
 
-/// The last card in the city list: pins another city.
+/// The last card in the row: pins another city. It's an action, so its glass is tinted.
 struct AddCityCardButton: View {
-    var style: LiquidGlassCityCard.Style = .floating
     let onTap: () -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.floatingCardCornerRadius) private var floatingCornerRadius
+    @Environment(\.floatingCardCornerRadius) private var cornerRadius
 
     var body: some View {
+        let side = LiquidGlassCityCard.floatingSize(for: dynamicTypeSize).height
         Button(action: onTap) {
             VStack(spacing: 8) {
                 Image(systemName: "plus")
-                    .font(.title2.weight(.medium))
-                    .foregroundStyle(.tint)
+                    .font(.title2.weight(.semibold))
                 Text("Add City")
                     .font(.headline)
             }
-            .modifier(AddCardFrame(style: style, side: LiquidGlassCityCard.floatingSize(for: dynamicTypeSize).height))
-            .modifier(AddCardSurface(style: style, cornerRadius: cornerRadius))
+            .foregroundStyle(.white)
+            .frame(width: side, height: side)
+            // Fully tinted, like every other Add City button: a faint tint turns muddy over the dark sky.
+            .adaptiveGlass(in: .rect(cornerRadius: cornerRadius, style: .continuous), tint: .accentColor)
         }
         .buttonStyle(CardButtonStyle(cornerRadius: cornerRadius))
         .accessibilityLabel("Add City")
-    }
-
-    private var cornerRadius: CGFloat {
-        style == .floating ? floatingCornerRadius : LiquidGlassCityCard.minimumCornerRadius
-    }
-}
-
-/// Square beside the floating cards; a full-width row in the list.
-private struct AddCardFrame: ViewModifier {
-    let style: LiquidGlassCityCard.Style
-    let side: CGFloat
-
-    func body(content: Content) -> some View {
-        switch style {
-        case .floating:
-            content.frame(width: side, height: side)
-        case .inline:
-            content.frame(maxWidth: .infinity, minHeight: 96)
-        }
-    }
-}
-
-private struct AddCardSurface: ViewModifier {
-    let style: LiquidGlassCityCard.Style
-    let cornerRadius: CGFloat
-
-    func body(content: Content) -> some View {
-        switch style {
-        case .floating:
-            content.floatingGlass(cornerRadius: cornerRadius)
-        case .inline:
-            content.contentCard(cornerRadius: cornerRadius)
-        }
     }
 }

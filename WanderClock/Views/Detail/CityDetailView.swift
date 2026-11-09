@@ -22,12 +22,10 @@ struct CityDetailView: View {
     let onDeleteAlarm: (CityAlarm) -> Void
     let onSaveAlarm: (CityAlarm) -> Void
     let onRetryWeather: () -> Void
-    let onDeleteCity: () -> Void
     /// False where the detail sits in a sheet or panel that brings its own glass.
     var showsBackground = true
 
     @State private var selectedTab: DetailTab
-    @State private var confirmingUnpin = false
     @State private var settings = AppSettings.shared
 
     init(
@@ -40,8 +38,7 @@ struct CityDetailView: View {
         onSetAlarmEnabled: @escaping (CityAlarm, Bool) -> Void,
         onDeleteAlarm: @escaping (CityAlarm) -> Void,
         onSaveAlarm: @escaping (CityAlarm) -> Void,
-        onRetryWeather: @escaping () -> Void,
-        onDeleteCity: @escaping () -> Void
+        onRetryWeather: @escaping () -> Void
     ) {
         self.city = city
         self.weather = weather
@@ -51,7 +48,6 @@ struct CityDetailView: View {
         self.onDeleteAlarm = onDeleteAlarm
         self.onSaveAlarm = onSaveAlarm
         self.onRetryWeather = onRetryWeather
-        self.onDeleteCity = onDeleteCity
         self.showsBackground = showsBackground
         _selectedTab = State(initialValue: initialTab)
     }
@@ -83,11 +79,6 @@ struct CityDetailView: View {
                     .floatingGlass(cornerRadius: 34)
                     .ignoresSafeArea(edges: .bottom)
             }
-        }
-        .confirmationDialog("Unpin \(city.name)?", isPresented: $confirmingUnpin, titleVisibility: .visible) {
-            Button("Unpin City", role: .destructive, action: onDeleteCity)
-        } message: {
-            Text("Its alarms will be deleted too.")
         }
     }
 
@@ -154,54 +145,22 @@ struct CityDetailView: View {
         )
     }
 
-    /// The city's local time. Its name is the heading over the map, above this panel.
+    /// The city's local time and how it compares to here. Its name is in the bar above, beside Back.
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
-            TimelineView(.everyMinute) { context in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(settings.formatTime(date: context.date, in: city.timeZone))
-                        .font(.title2.weight(.semibold))
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                    Text("\(city.dayDifferenceStatus(date: context.date)), \(city.relativeTimeDifference(date: context.date))")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Text("\(city.name), \(settings.formatTime(date: context.date, in: city.timeZone)), \(city.relativeTimeDescription(date: context.date))"))
-                .accessibilityAddTraits(.isHeader)
+        TimelineView(.everyMinute) { context in
+            VStack(alignment: .leading, spacing: 2) {
+                Text(settings.formatTime(date: context.date, in: city.timeZone))
+                    .font(.title2.weight(.semibold))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                Text("\(city.dayDifferenceStatus(date: context.date)), \(city.relativeTimeDifference(date: context.date))")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
-
-            AdaptiveGlassContainer(spacing: 8) {
-                HStack(spacing: 8) {
-                    Menu {
-                        Button(role: .destructive) {
-                            confirmingUnpin = true
-                        } label: {
-                            Label("Unpin City", systemImage: "pin.slash")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.body.weight(.semibold))
-                            .frame(width: 24, height: 24)
-                    }
-                    .adaptiveGlassButtonStyle()
-                    .buttonBorderShape(.circle)
-                    .accessibilityLabel("More")
-
-                    Button(action: onClose) {
-                        Image(systemName: "xmark")
-                            .font(.body.weight(.semibold))
-                            .frame(width: 24, height: 24)
-                    }
-                    .adaptiveGlassButtonStyle()
-                    .buttonBorderShape(.circle)
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityLabel("Close")
-                }
-            }
-            .padding(.top, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("\(city.name), \(settings.formatTime(date: context.date, in: city.timeZone)), \(city.relativeTimeDescription(date: context.date))"))
+            .accessibilityAddTraits(.isHeader)
         }
     }
 }

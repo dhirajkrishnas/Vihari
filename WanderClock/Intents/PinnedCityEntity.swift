@@ -54,11 +54,13 @@ struct PinnedCityQuery: EnumerableEntityQuery, EntityStringQuery {
 enum CityIntentError: Error, CustomLocalizedStringResourceConvertible {
     case cityNotFound
     case weatherUnavailable
+    case alarmTimeHasPassed(cityName: String)
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
-        case .cityNotFound: "That city isn't pinned in WanderClock anymore."
-        case .weatherUnavailable: "Weather isn't available right now. Try again in a moment."
+        case .cityNotFound: "That city isn’t pinned in WanderClock anymore."
+        case .weatherUnavailable: "Weather isn’t available right now. Try again in a moment."
+        case .alarmTimeHasPassed(let cityName): "That time has already passed in \(cityName). Choose a later time or another day."
         }
     }
 }

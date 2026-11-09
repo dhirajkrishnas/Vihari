@@ -3,7 +3,7 @@ import SwiftUI
 /// Addresses the legal pages link to. Kept together so the in-app text and the hosted copy agree.
 enum LegalLinks {
     /// When the Privacy Policy and Terms last changed. Update it whenever their text does.
-    static let policyDate = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 11, day: 4).date ?? .now
+    static let policyDate = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 11, day: 9).date ?? .now
 
     static let appleStandardEULA = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
     static let applePrivacy = URL(string: "https://www.apple.com/legal/privacy/")!
@@ -190,7 +190,7 @@ private struct LegalSummary: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .contentCard(cornerRadius: 22, tint: .cyan)
+        .contentCard(cornerRadius: 22, tint: .accentColor)
         .accessibilityElement(children: .combine)
     }
 }

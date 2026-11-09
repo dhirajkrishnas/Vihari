@@ -5,6 +5,8 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Bindable private var settings = AppSettings.shared
+    @State private var donationStore = DonationStore.shared
+    @State private var showingDonationSheet = false
     @State private var confirmingDeleteAll = false
 
     private var isSignedInToICloud: Bool {
@@ -23,6 +25,7 @@ struct SettingsView: View {
                 VStack(spacing: 24) {
                     unitsSection
                     syncSection
+                    supportSection
                     aboutSection
                     dataSection
                     footer
@@ -36,14 +39,22 @@ struct SettingsView: View {
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
+            #if !os(macOS)
+            // The Mac's Settings window closes like any other window.
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(role: .close) { dismiss() }
                 }
             }
+            #endif
             .onChange(of: settings.isICloudSyncEnabled) { _, enabled in
                 if enabled { Task { await store.syncNow() } }
             }
+            .sheet(isPresented: $showingDonationSheet) {
+                DonationSheet()
+            }
+            .sensoryFeedback(.success, trigger: donationStore.hasDonatedSuccessfully)
+            .tipErrorAlert(donationStore)
             .confirmationDialog("Delete All Data?", isPresented: $confirmingDeleteAll, titleVisibility: .visible) {
                 Button("Delete All Data", role: .destructive) {
                     store.deleteAllData()
@@ -123,7 +134,9 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .toggleStyle(.switch)
 
                 if settings.isICloudSyncEnabled {
                     divider
@@ -164,7 +177,7 @@ struct SettingsView: View {
                             }
                         }
                         .font(.caption.weight(.bold))
-                        .buttonStyle(.bordered)
+                        .adaptiveGlassButtonStyle(prominent: true)
                         .buttonBorderShape(.capsule)
                         .disabled(store.isSyncing || !isSignedInToICloud)
                     }
@@ -172,8 +185,73 @@ struct SettingsView: View {
                 }
             }
             .padding(18)
-            .contentCard(cornerRadius: 22, tint: settings.isICloudSyncEnabled ? .cyan : nil)
+            .contentCard(cornerRadius: 22)
             .animation(.snappy, value: settings.isICloudSyncEnabled)
+        }
+    }
+
+    // MARK: Support WanderClock
+
+    private var supportSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader(title: "Support WanderClock", systemImage: "heart.fill")
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: "heart.circle.fill")
+                        .font(.largeTitle)
+                        .foregroundStyle(.tint)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Leave a Tip")
+                            .font(.headline)
+                        Text("WanderClock is ad-free, private and independent. Tips are optional and help support future updates and new features.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if donationStore.hasDonatedSuccessfully {
+                    TipThanks()
+                        .transition(.opacity)
+                }
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 200 : 110), spacing: 8)], spacing: 8) {
+                    ForEach(DonationTier.allCases) { tier in
+                        TipButton(tier: tier, showsIcon: true)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .controlSize(.large)
+
+                if donationStore.loadFailed {
+                    TipsUnavailableNote()
+                }
+
+                divider
+
+                Button {
+                    showingDonationSheet = true
+                } label: {
+                    HStack {
+                        RowLabel("Tip Jar & Support Details", systemImage: "gift")
+                        Spacer()
+                        Image(systemName: "chevron.forward")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
+                    }
+                    .frame(minHeight: 36)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(18)
+            .contentCard(cornerRadius: 22)
+            .animation(.smooth, value: donationStore.hasDonatedSuccessfully)
+            .task { await donationStore.loadProducts() }
         }
     }
 
@@ -254,8 +332,7 @@ struct SettingsView: View {
 
     private func row<Control: View>(_ title: LocalizedStringKey, systemImage: String, @ViewBuilder control: () -> Control) -> some View {
         adaptiveStack {
-            Label(title, systemImage: systemImage)
-                .font(.subheadline)
+            RowLabel(title, systemImage: systemImage)
             if !dynamicTypeSize.isAccessibilitySize { Spacer() }
             control()
                 // The row's label already names the setting (a Mac picker would repeat it).
@@ -268,8 +345,7 @@ struct SettingsView: View {
             destination()
         } label: {
             HStack {
-                Label(title, systemImage: systemImage)
-                    .font(.subheadline)
+                RowLabel(title, systemImage: systemImage)
                 Spacer()
                 Image(systemName: "chevron.forward")
                     .font(.footnote.weight(.semibold))
@@ -281,5 +357,28 @@ struct SettingsView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// A settings row's name and symbol. Every symbol gets the same width, so the names line up
+/// down a card the way they do in a system list.
+private struct RowLabel: View {
+    let title: LocalizedStringKey
+    let systemImage: String
+    @ScaledMetric(relativeTo: .subheadline) private var iconWidth: CGFloat = 22
+
+    init(_ title: LocalizedStringKey, systemImage: String) {
+        self.title = title
+        self.systemImage = systemImage
+    }
+
+    var body: some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: systemImage)
+                .frame(width: iconWidth)
+        }
+        .font(.subheadline)
     }
 }

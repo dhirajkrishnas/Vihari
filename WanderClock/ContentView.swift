@@ -5,6 +5,9 @@ struct ContentView: View {
     @State private var onboarding = OnboardingFlow.shared
     @State private var showingAddSheet = false
     @State private var showingSettingsSheet = false
+    @State private var showingAlarmsSheet = false
+    /// A city chosen in All Alarms, opened once that sheet has gone.
+    @State private var cityFromAlarms: PinnedCity?
     /// True while a city's detail is up in its own sheet (iPhone).
     @State private var showingCitySheet = false
     /// A city pinned from onboarding, opened once the search sheet has gone.
@@ -12,25 +15,29 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        ZStack {
-            ResponsiveLayoutContainer(
-                store: store,
-                showingAddSheet: $showingAddSheet,
-                showingSettingsSheet: $showingSettingsSheet,
-                showingCitySheet: $showingCitySheet,
-                isOnboarding: onboarding.stage == .intro
-            )
-
-            if onboarding.stage == .intro {
-                OnboardingView(
-                    hasCities: !store.cities.isEmpty,
-                    onChooseCity: { showingAddSheet = true },
-                    onContinueWithExistingCities: {
-                        if let city = store.cities.first { startAlarmStep(with: city) }
-                    }
+        // The stack gives the Mac and Vision Pro window its toolbar, and the introduction its Skip button.
+        NavigationStack {
+            ZStack {
+                ResponsiveLayoutContainer(
+                    store: store,
+                    showingAddSheet: $showingAddSheet,
+                    showingSettingsSheet: $showingSettingsSheet,
+                    showingAlarmsSheet: $showingAlarmsSheet,
+                    showingCitySheet: $showingCitySheet,
+                    isOnboarding: onboarding.stage == .intro
                 )
-                .frame(maxWidth: 560)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+
+                if onboarding.stage == .intro {
+                    OnboardingView(
+                        hasCities: !store.cities.isEmpty,
+                        onChooseCity: { showingAddSheet = true },
+                        onContinueWithExistingCities: {
+                            if let city = store.cities.first { startAlarmStep(with: city) }
+                        }
+                    )
+                    .frame(maxWidth: 560)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
         }
         .sheet(isPresented: $showingAddSheet, onDismiss: openFirstCityIfNeeded) {
@@ -40,27 +47,50 @@ struct ContentView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingSettingsSheet) {
+        #if !os(macOS)
+        // While a city's sheet is up (iPhone), Settings opens over that sheet instead.
+        .sheet(isPresented: Binding(
+            get: { showingSettingsSheet && !showingCitySheet },
+            set: { showingSettingsSheet = $0 }
+        )) {
             SettingsView(store: store)
+        }
+        #endif
+        .sheet(isPresented: Binding(
+            get: { showingAlarmsSheet && !showingCitySheet },
+            set: { showingAlarmsSheet = $0 }
+        ), onDismiss: openCityFromAlarms) {
+            AllAlarmsSheet(store: store) { city in
+                cityFromAlarms = city
+                showingAlarmsSheet = false
+            }
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             if phase == .active { store.appDidBecomeActive() }
         }
         .focusedSceneValue(\.sceneActions, sceneActions)
-        .tint(.cyan)
         .preferredColorScheme(.dark)
         #if os(macOS)
         .frame(minWidth: 850, minHeight: 620)
         #endif
     }
 
-    /// Menu commands, available while no sheet is up. Settings waits until the introduction is done.
+    /// Menu commands, available while no sheet is up. Settings and Alarms wait until the introduction is done.
+    /// (The Mac's Settings window has its own menu item.)
     private var sceneActions: SceneActions? {
-        guard !showingAddSheet, !showingSettingsSheet, !showingCitySheet else { return nil }
+        guard !showingAddSheet, !showingSettingsSheet, !showingAlarmsSheet, !showingCitySheet else { return nil }
+        let isIntro = onboarding.stage == .intro
         return SceneActions(
             addCity: { showingAddSheet = true },
-            openSettings: onboarding.stage == .intro ? nil : { showingSettingsSheet = true }
+            openSettings: isIntro ? nil : { showingSettingsSheet = true },
+            showAlarms: isIntro ? nil : { showingAlarmsSheet = true }
         )
+    }
+
+    private func openCityFromAlarms() {
+        guard let city = cityFromAlarms else { return }
+        cityFromAlarms = nil
+        withAnimation(.smooth(duration: 0.5)) { store.selectedCity = city }
     }
 
     private func openFirstCityIfNeeded() {

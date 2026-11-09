@@ -16,9 +16,11 @@ import AlarmKit
 ///
 /// The queue is topped up whenever the app becomes active, whenever a ringing alarm is
 /// stopped (even with the app closed, through `StopCityAlarmIntent`), and by background refresh.
+/// On the Mac and Vision Pro, which have neither, it's also topped up whenever an alarm's
+/// notification arrives with the app open or the person answers one.
 ///
 /// - iPhone / iPad: AlarmKit, so alarms break through Silent and Focus like the Clock app.
-/// - Mac / Vision Pro: local notifications.
+/// - Mac / Vision Pro: Time Sensitive local notifications, which break through Focus.
 @Observable
 final class AlarmScheduler {
     static let shared = AlarmScheduler()
@@ -149,24 +151,37 @@ final class AlarmScheduler {
         let liveIDs = Set(live.map(\.id))
         let desiredIDs = Set(desired.map(\.systemID))
 
-        // A ringing alarm is left alone; it ends when it's stopped.
-        for alarm in live where !desiredIDs.contains(alarm.id) && alarm.state != .alerting {
+        // A ringing or snoozing alarm is left alone; it ends when it's stopped.
+        for alarm in live where !desiredIDs.contains(alarm.id) && alarm.state != .alerting && alarm.state != .countdown {
             try? manager.cancel(id: alarm.id)
         }
 
         for occurrence in desired where !liveIDs.contains(occurrence.systemID) {
             guard !Task.isCancelled else { return }
             let alarm = occurrence.alarm
-            let alert = AlarmPresentation.Alert(title: LocalizedStringResource(stringLiteral: alarm.alertTitle))
+            let alert = AlarmPresentation.Alert(
+                title: LocalizedStringResource(stringLiteral: alarm.alertTitle),
+                secondaryButton: AlarmButton(
+                    text: LocalizedStringResource("Snooze", comment: "Snooze alarm button"),
+                    textColor: .white,
+                    systemImageName: "moon.zzz.fill"
+                ),
+                secondaryButtonBehavior: .countdown
+            )
+            let countdown = AlarmPresentation.Countdown(
+                title: LocalizedStringResource(stringLiteral: "\(alarm.label) · Snooze"),
+                pauseButton: nil
+            )
             let attributes = AlarmAttributes<Metadata>(
-                presentation: AlarmPresentation(alert: alert),
+                presentation: AlarmPresentation(alert: alert, countdown: countdown),
                 metadata: Metadata(alarmID: alarm.id, cityName: alarm.cityName, cityTime: alarm.formattedCityTime),
-                tintColor: .cyan
+                tintColor: .tangerine
             )
             do {
                 _ = try await manager.schedule(
                     id: occurrence.systemID,
-                    configuration: .alarm(
+                    configuration: AlarmManager.AlarmConfiguration<Metadata>(
+                        countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: 9 * 60),
                         schedule: .fixed(occurrence.fireDate),
                         attributes: attributes,
                         stopIntent: StopCityAlarmIntent(alarmID: occurrence.systemID)
@@ -213,11 +228,13 @@ final class AlarmScheduler {
         let center = UNUserNotificationCenter.current()
         let pending = await center.pendingNotificationRequests()
             .filter { $0.content.categoryIdentifier == AlarmNotificationDelegate.category && !$0.identifier.hasPrefix(AlarmNotificationDelegate.snoozePrefix) }
-        let pendingIDs = Set(pending.map(\.identifier))
         let desiredIDs = Set(desired.map(\.systemID.uuidString))
 
-        let stale = pendingIDs.subtracting(desiredIDs)
+        let stale = Set(pending.map(\.identifier)).subtracting(desiredIDs)
         if !stale.isEmpty { center.removePendingNotificationRequests(withIdentifiers: Array(stale)) }
+
+        // Rings queued before alarms were Time Sensitive are queued again, which replaces them.
+        let pendingIDs = Set(pending.filter { $0.content.interruptionLevel == .timeSensitive }.map(\.identifier))
 
         // A calendar trigger names the exact moment, so it stays right across sleep and clock changes.
         var calendar = Calendar(identifier: .gregorian)
@@ -229,6 +246,8 @@ final class AlarmScheduler {
             content.title = alarm.label
             content.subtitle = String(localized: "\(alarm.formattedCityTime) in \(alarm.cityName)")
             content.sound = .default
+            // Breaks through Focus and Do Not Disturb, unless the person turns that off for the app.
+            content.interruptionLevel = .timeSensitive
             content.categoryIdentifier = AlarmNotificationDelegate.category
             let moment = calendar.dateComponents([.calendar, .timeZone, .year, .month, .day, .hour, .minute, .second], from: occurrence.fireDate)
             let request = UNNotificationRequest(
@@ -256,7 +275,7 @@ private nonisolated struct Occurrence {
 
     var systemID: UUID {
         // The version prefix changes every ID when the way rings are scheduled changes.
-        let seed = "v2|\(alarm.id.uuidString)|\(Int(fireDate.timeIntervalSince1970))|\(alarm.label)|\(alarm.cityName)"
+        let seed = "v3|\(alarm.id.uuidString)|\(Int(fireDate.timeIntervalSince1970))|\(alarm.label)|\(alarm.cityName)"
         return StableUUID.make(from: seed)
     }
 }
@@ -282,15 +301,9 @@ nonisolated enum StableUUID {
     }
 }
 
-#if os(iOS)
-nonisolated struct WanderClockAlarmMetadata: AlarmMetadata {
-    var alarmID: UUID
-    var cityName: String
-    var cityTime: String
-}
-#endif
 
-/// Shows alarm notifications in the foreground and handles Snooze (Mac / Vision Pro).
+/// Shows alarm notifications in the foreground, handles Snooze, and tops up the queue of rings
+/// whenever an alarm arrives with the app open or the person answers one (Mac / Vision Pro).
 nonisolated final class AlarmNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Sendable {
     static let category = "WANDER_ALARM_CATEGORY"
     static let snoozeAction = "ACTION_SNOOZE"
@@ -298,21 +311,27 @@ nonisolated final class AlarmNotificationDelegate: NSObject, UNUserNotificationC
 
     static func registerCategories() {
         let snooze = UNNotificationAction(identifier: snoozeAction, title: String(localized: "Snooze 9 min"), options: [])
-        let category = UNNotificationCategory(identifier: Self.category, actions: [snooze], intentIdentifiers: [], options: [])
+        // Dismissing an alarm reaches the app too, so it can queue the next rings.
+        let category = UNNotificationCategory(identifier: Self.category, actions: [snooze], intentIdentifiers: [], options: [.customDismissAction])
         UNUserNotificationCenter.current().setNotificationCategories([category])
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+        // An alarm rang with the app open: retire it if it rings once, and queue the next rings.
+        Task { await CityStore.shared.refreshAlarmSchedule() }
+        return [.banner, .list, .sound]
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        guard response.actionIdentifier == Self.snoozeAction else { return }
-        let request = UNNotificationRequest(
-            identifier: "\(Self.snoozePrefix)\(UUID().uuidString)",
-            content: response.notification.request.content,
-            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 9 * 60, repeats: false)
-        )
-        try? await center.add(request)
+        if response.actionIdentifier == Self.snoozeAction {
+            let request = UNNotificationRequest(
+                identifier: "\(Self.snoozePrefix)\(UUID().uuidString)",
+                content: response.notification.request.content,
+                trigger: UNTimeIntervalNotificationTrigger(timeInterval: 9 * 60, repeats: false)
+            )
+            try? await center.add(request)
+        }
+        // Finishes before returning, so the next rings are queued before the app is suspended again.
+        await CityStore.shared.refreshAlarmSchedule()
     }
 }

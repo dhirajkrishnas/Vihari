@@ -6,8 +6,12 @@
 	<array>
 		<string>com.dhirajkrishnasimhadri.WanderClock.refresh</string>
 	</array>
+	<key>CFBundleDisplayName</key>
+	<string>WanderClock</string>
 	<key>NSAlarmKitUsageDescription</key>
 	<string>WanderClock rings your alarms at the exact local time of the cities you pin, even while you travel.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

@@ -54,6 +54,78 @@ nonisolated enum RepeatSchedule: Codable, Hashable, Sendable {
     }
 
     var repeats: Bool { !activeWeekdays.isEmpty }
+
+    /// The schedule that rings on `days`. No days means it rings once; common sets get their own names.
+    init(weekdays days: Set<AlarmWeekday>) {
+        switch days {
+        case []: self = .never
+        case Set(AlarmWeekday.allCases): self = .everyday
+        case RepeatSchedule.weekdays.activeWeekdays: self = .weekdays
+        case RepeatSchedule.weekends.activeWeekdays: self = .weekends
+        default: self = .custom(days)
+        }
+    }
+}
+
+/// A day on a city's own calendar, such as 20 November in Seoul. It's kept as a year, month and day
+/// rather than a moment, so it stays the same day there wherever the device travels.
+nonisolated struct CityDay: Codable, Hashable, Sendable, Comparable {
+    var year: Int
+    var month: Int
+    var day: Int
+
+    init(year: Int, month: Int, day: Int) {
+        self.year = year
+        self.month = month
+        self.day = day
+    }
+
+    /// The day `date` falls on in `timeZone`.
+    init(_ date: Date, in timeZone: TimeZone) {
+        let parts = Self.calendar(in: timeZone).dateComponents([.year, .month, .day], from: date)
+        self.init(year: parts.year ?? 1970, month: parts.month ?? 1, day: parts.day ?? 1)
+    }
+
+    static func < (lhs: CityDay, rhs: CityDay) -> Bool {
+        (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
+    }
+
+    /// The first moment of this day in `timeZone`.
+    func start(in timeZone: TimeZone) -> Date? {
+        let calendar = Self.calendar(in: timeZone)
+        return calendar.date(from: DateComponents(year: year, month: month, day: day)).map(calendar.startOfDay)
+    }
+
+    /// The moment it's `hour`:`minute` on this day in `timeZone`. If a daylight saving change skips
+    /// that time, the first moment after it.
+    func date(hour: Int, minute: Int, in timeZone: TimeZone) -> Date? {
+        guard let start = start(in: timeZone) else { return nil }
+        return Self.calendar(in: timeZone).date(bySettingHour: hour, minute: minute, second: 0, of: start)
+    }
+
+    /// The day after this one.
+    func next(in timeZone: TimeZone) -> CityDay {
+        guard let noon = date(hour: 12, minute: 0, in: timeZone),
+              let after = Self.calendar(in: timeZone).date(byAdding: .day, value: 1, to: noon)
+        else { return self }
+        return CityDay(after, in: timeZone)
+    }
+
+    /// e.g. "Fri, 21 Nov", "20 Nov", or with the year when it isn't this year: "Fri, 8 Jan 2027".
+    func formatted(withWeekday: Bool = true, in timeZone: TimeZone, now: Date = .now) -> String {
+        guard let noon = date(hour: 12, minute: 0, in: timeZone) else { return "" }
+        var style = Date.FormatStyle.dateTime.day().month(.abbreviated)
+        if withWeekday { style = style.weekday(.abbreviated) }
+        if year != CityDay(now, in: timeZone).year { style = style.year() }
+        style.timeZone = timeZone
+        return noon.formatted(style)
+    }
+
+    private static func calendar(in timeZone: TimeZone) -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar
+    }
 }
 
 nonisolated struct CityAlarm: Identifiable, Codable, Hashable, Sendable {
@@ -68,6 +140,9 @@ nonisolated struct CityAlarm: Identifiable, Codable, Hashable, Sendable {
     var label: String
     var isEnabled: Bool
     var repeatSchedule: RepeatSchedule
+    /// The day, on the city's calendar, a one-time alarm rings, or the first day a repeating one may
+    /// ring. Without one, the alarm rings the next time its hour and minute come round.
+    var scheduledDay: CityDay?
     /// For one-time alarms: the exact moment it was armed to ring. Once that passes, the alarm turns itself off.
     var oneTimeFireDate: Date?
     var createdAt: Date
@@ -83,6 +158,7 @@ nonisolated struct CityAlarm: Identifiable, Codable, Hashable, Sendable {
         label: String = String(localized: "Alarm"),
         isEnabled: Bool = true,
         repeatSchedule: RepeatSchedule = .everyday,
+        scheduledDay: CityDay? = nil,
         createdAt: Date = .now
     ) {
         self.id = id
@@ -94,14 +170,15 @@ nonisolated struct CityAlarm: Identifiable, Codable, Hashable, Sendable {
         self.label = label
         self.isEnabled = isEnabled
         self.repeatSchedule = repeatSchedule
+        self.scheduledDay = scheduledDay
         self.createdAt = createdAt
         self.modifiedAt = createdAt
         if isEnabled && !repeatSchedule.repeats {
-            self.oneTimeFireDate = Self.nextOccurrence(hour: hour, minute: minute, in: TimeZone(identifier: timeZoneIdentifier) ?? .current, after: createdAt, weekdays: [])
+            self.oneTimeFireDate = oneTimeRing(after: createdAt)
         }
     }
 
-    // Older saved data has no `modifiedAt` / `oneTimeFireDate` (and an unused `soundName`), so decode leniently.
+    // Older saved data has no `modifiedAt`, `oneTimeFireDate` or `scheduledDay` (and an unused `soundName`), so decode leniently.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -113,6 +190,7 @@ nonisolated struct CityAlarm: Identifiable, Codable, Hashable, Sendable {
         label = try c.decode(String.self, forKey: .label)
         isEnabled = try c.decode(Bool.self, forKey: .isEnabled)
         repeatSchedule = try c.decode(RepeatSchedule.self, forKey: .repeatSchedule)
+        scheduledDay = try c.decodeIfPresent(CityDay.self, forKey: .scheduledDay)
         oneTimeFireDate = try c.decodeIfPresent(Date.self, forKey: .oneTimeFireDate)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? .now
         modifiedAt = try c.decodeIfPresent(Date.self, forKey: .modifiedAt) ?? createdAt
@@ -137,7 +215,11 @@ nonisolated struct CityAlarm: Identifiable, Codable, Hashable, Sendable {
 
     /// What a ringing alarm says: its label, plus the city unless the label already names it.
     var alertTitle: String {
-        label.localizedCaseInsensitiveContains(cityName) ? label : String(localized: "\(label) · \(cityName)", comment: "Ringing alarm title: label and city")
+        // A ringing alarm shows only a title, so it carries the label and the city's time.
+        if label.localizedCaseInsensitiveContains(cityName) {
+            return String(localized: "\(label) · \(formattedCityTime)", comment: "Ringing alarm title: label (which names the city) and the city's time")
+        }
+        return String(localized: "\(label) · \(formattedCityTime) in \(cityName)", comment: "Ringing alarm title: label, the city's time and the city")
     }
 
     /// Returns a copy armed (or re-armed) for its next ring. Call whenever the alarm is switched on or edited.
@@ -145,10 +227,21 @@ nonisolated struct CityAlarm: Identifiable, Codable, Hashable, Sendable {
         var copy = self
         copy.isEnabled = true
         copy.modifiedAt = now
-        copy.oneTimeFireDate = repeatSchedule.repeats
-            ? nil
-            : Self.nextOccurrence(hour: hour, minute: minute, in: timeZone, after: now, weekdays: [])
+        if repeatSchedule.repeats {
+            copy.oneTimeFireDate = nil
+        } else {
+            // A one-time alarm whose day has gone by rings at the next chance instead.
+            if let ring = oneTimeRing(after: now), ring <= now { copy.scheduledDay = nil }
+            copy.oneTimeFireDate = copy.oneTimeRing(after: now)
+        }
         return copy
+    }
+
+    /// When a one-time alarm rings: on its day if it has one, otherwise the next time its hour and
+    /// minute come round after `now`. A day that has gone by gives a moment in the past.
+    func oneTimeRing(after now: Date) -> Date? {
+        if let scheduledDay { return scheduledDay.date(hour: hour, minute: minute, in: timeZone) }
+        return Self.nextOccurrence(hour: hour, minute: minute, in: timeZone, after: now, weekdays: [])
     }
 
     /// True for a one-time alarm whose moment has passed — it should be switched off.
@@ -170,21 +263,21 @@ nonisolated struct CityAlarm: Identifiable, Codable, Hashable, Sendable {
         guard isEnabled, limit > 0 else { return [] }
 
         guard repeatSchedule.repeats else {
-            if let fireDate = oneTimeFireDate {
-                return fireDate > now ? [fireDate] : []
-            }
-            return Self.nextOccurrence(hour: hour, minute: minute, in: timeZone, after: now, weekdays: []).map { [$0] } ?? []
+            guard let fireDate = oneTimeFireDate ?? oneTimeRing(after: now), fireDate > now else { return [] }
+            return [fireDate]
         }
 
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let activeDays = repeatSchedule.activeWeekdays
-        let startOfToday = calendar.startOfDay(for: now)
+        // Counted from the first day it may ring, so one that starts weeks from now is queued already.
+        let firstDay = max(now, scheduledDay?.start(in: timeZone) ?? now)
+        let startOfFirstDay = calendar.startOfDay(for: firstDay)
         var results: [Date] = []
 
         for offset in 0...horizonDays {
             guard results.count < limit,
-                  let day = calendar.date(byAdding: .day, value: offset, to: startOfToday),
+                  let day = calendar.date(byAdding: .day, value: offset, to: startOfFirstDay),
                   let weekday = AlarmWeekday(rawValue: calendar.component(.weekday, from: day)),
                   activeDays.contains(weekday),
                   let candidate = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: day),
@@ -193,6 +286,16 @@ nonisolated struct CityAlarm: Identifiable, Codable, Hashable, Sendable {
             results.append(candidate)
         }
         return results
+    }
+
+    /// How it repeats, with its day when it has one: "Weekdays", "Fri, 21 Nov" or "Weekdays from 20 Nov".
+    func scheduleSummary(now: Date = .now) -> String {
+        guard let scheduledDay else { return repeatSchedule.title }
+        guard repeatSchedule.repeats else { return scheduledDay.formatted(in: timeZone, now: now) }
+        // Once its first day has come, it's simply a repeating alarm.
+        guard scheduledDay > CityDay(now, in: timeZone) else { return repeatSchedule.title }
+        let start = scheduledDay.formatted(withWeekday: false, in: timeZone, now: now)
+        return String(localized: "\(repeatSchedule.title) from \(start)", comment: "A repeating alarm's days and the day it starts, for example Weekdays from 20 Nov")
     }
 
     /// The next ring time shown in the device's current time zone.
@@ -209,12 +312,14 @@ nonisolated struct CityAlarm: Identifiable, Codable, Hashable, Sendable {
             return String(localized: "Off")
         }
         let localTime = AppSettings.formatTime(next, in: .current)
-        let remaining = max(60, next.timeIntervalSince(now))
+        return String(localized: "\(localTime) your time · in \(Self.timeUntil(next, from: now))")
+    }
+
+    /// How long until `date`, e.g. "5 hr, 20 min" or "10 days, 3 hr".
+    static func timeUntil(_ date: Date, from now: Date) -> String {
+        let remaining = max(60, date.timeIntervalSince(now))
         let units: Set<Duration.UnitsFormatStyle.Unit> = remaining >= 86_400 ? [.days, .hours] : [.hours, .minutes]
-        let relative = Duration.seconds(remaining).formatted(
-            .units(allowed: units, width: .abbreviated, maximumUnitCount: 2)
-        )
-        return String(localized: "\(localTime) your time · in \(relative)")
+        return Duration.seconds(remaining).formatted(.units(allowed: units, width: .abbreviated, maximumUnitCount: 2))
     }
 
     private static func nextOccurrence(hour: Int, minute: Int, in timeZone: TimeZone, after now: Date, weekdays: Set<AlarmWeekday>) -> Date? {

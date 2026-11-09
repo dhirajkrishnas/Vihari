@@ -124,6 +124,15 @@ final class CityStore {
         alarmsDidChange(requestPermission: updated.isEnabled)
     }
 
+    /// Saves an alarm from the editor: updates it if it exists, otherwise adds it.
+    func saveAlarm(_ alarm: CityAlarm) {
+        if alarms.contains(where: { $0.id == alarm.id }) {
+            updateAlarm(alarm)
+        } else {
+            addAlarm(alarm)
+        }
+    }
+
     func setAlarm(_ alarm: CityAlarm, enabled: Bool) {
         guard let index = alarms.firstIndex(where: { $0.id == alarm.id }) else { return }
         if enabled {

@@ -12,6 +12,13 @@ struct SetCityAlarmIntent: AppIntent {
     @Parameter(title: "Time", description: "The time in the city's local time.", kind: .time)
     var alarmTime: Date
 
+    @Parameter(
+        title: "Date",
+        description: "The day it rings, on the city's calendar. If it repeats, the first day it can ring. Leave it empty for the next time it comes round.",
+        kind: .date
+    )
+    var date: Date?
+
     @Parameter(title: "Label", default: "Alarm")
     var label: String
 
@@ -20,6 +27,7 @@ struct SetCityAlarmIntent: AppIntent {
 
     static var parameterSummary: some ParameterSummary {
         Summary("Set an alarm for \(\.$alarmTime) in \(\.$city)") {
+            \.$date
             \.$label
             \.$repeatsOnWeekdays
         }
@@ -41,8 +49,13 @@ struct SetCityAlarmIntent: AppIntent {
             hour: parts.hour ?? 8,
             minute: parts.minute ?? 0,
             label: trimmedLabel.isEmpty ? String(localized: "\(pinned.name) Alarm") : trimmedLabel,
-            repeatSchedule: repeatsOnWeekdays ? .weekdays : .never
+            repeatSchedule: repeatsOnWeekdays ? .weekdays : .never,
+            // The day Siri hears is taken as that day in the city, as the time is.
+            scheduledDay: date.map { CityDay($0, in: .current) }
         )
+        if !alarm.repeatSchedule.repeats, let ring = alarm.oneTimeRing(after: .now), ring <= .now {
+            throw CityIntentError.alarmTimeHasPassed(cityName: pinned.name)
+        }
         CityStore.shared.addAlarm(alarm)
         await AlarmScheduler.shared.waitUntilIdle()
         await AlarmScheduler.shared.refreshAuthorization()
@@ -51,8 +64,8 @@ struct SetCityAlarmIntent: AppIntent {
         let context = alarm.travelerContextSummary()
         // Don't claim the alarm will ring if alarms aren't allowed yet.
         let dialog: IntentDialog = AlarmScheduler.shared.authorization == .authorized
-            ? "Alarm set for \(cityTime) \(pinned.name) time. That's \(context)."
-            : "I saved an alarm for \(cityTime) \(pinned.name) time, but WanderClock isn't allowed to ring alarms yet. Open WanderClock to allow them."
+            ? "Alarm set for \(cityTime) \(pinned.name) time. That’s \(context)."
+            : "I saved an alarm for \(cityTime) \(pinned.name) time, but WanderClock isn’t allowed to ring alarms yet. Open WanderClock to allow them."
         return .result(
             dialog: dialog,
             view: CityAlarmSnippetView(

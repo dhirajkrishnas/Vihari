@@ -35,55 +35,57 @@ struct GlobeView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let layout = Layout(size: proxy.size, orbitBottomInset: orbitBottomInset, attributionBottomInset: attributionBottomInset,
-                                detailBottomInset: detailBottomInset, detailTopInset: detailTopInset,
-                                trailingPaneWidth: trailingPaneWidth, showsTrailingPane: showsTrailingPane, fillsScreen: fillsScreen)
-            let blend = CGFloat(engine.detailBlend)
-            let height = layout.orbitHeight + (layout.detailHeight - layout.orbitHeight) * blend
-            let bottom = layout.orbitBottom + (layout.detailBottom - layout.orbitBottom) * blend
-            // Beside a side pane the map reaches under it once the globe is big (see MapFrame).
-            let reach = CGFloat(engine.reach)
-            let width = layout.width + layout.extraWidth * reach
-            // Its edge under the pane fades into the stars, until it reaches the window's edge.
-            let sideFade = layout.extraWidth > 0 ? layout.edgeFade * (1 - reach) / max(1, width) : 0
+            if proxy.size.width > 0 && proxy.size.height > 0 {
+                let layout = Layout(size: proxy.size, orbitBottomInset: orbitBottomInset, attributionBottomInset: attributionBottomInset,
+                                    detailBottomInset: detailBottomInset, detailTopInset: detailTopInset,
+                                    trailingPaneWidth: trailingPaneWidth, showsTrailingPane: showsTrailingPane, fillsScreen: fillsScreen)
+                let blend = CGFloat(engine.detailBlend)
+                let height = max(1, layout.orbitHeight + (layout.detailHeight - layout.orbitHeight) * blend)
+                let bottom = layout.orbitBottom + (layout.detailBottom - layout.orbitBottom) * blend
+                // Beside a side pane the map reaches under it once the globe is big (see MapFrame).
+                let reach = CGFloat(engine.reach)
+                let width = max(1, layout.width + layout.extraWidth * reach)
+                // Its edge under the pane fades into the stars, until it reaches the window's edge.
+                let sideFade = layout.extraWidth > 0 ? layout.edgeFade * (1 - reach) / max(1, width) : 0
 
-            map
-                // MapKit doesn't follow inset changes while the camera moves every frame, so the
-                // insets stay fixed. On iPhone the frame stays put too, and the camera does the
-                // framing; beside a side pane the frame grows, and the engine scales the camera
-                // distance with its height so the zoom still follows its curve.
-                .safeAreaPadding(.vertical, layout.inset)
-                .frame(width: width, height: height)
-                .opacity(engine.mapOpacity)
-                // A fitted map (side-by-side layouts) softens its top edge in orbit and its edge under
-                // the pane, so MapKit's space blends into the starfield behind it.
-                .mask {
-                    LinearGradient(stops: [
-                        .init(color: fillsScreen ? .black : .black.opacity(blend), location: 0),
-                        .init(color: .black, location: fillsScreen ? 0 : 0.12 * (1 - blend)),
-                        .init(color: .black, location: 1)
-                    ], startPoint: .top, endPoint: .bottom)
-                }
-                .mask {
-                    LinearGradient(stops: [
-                        .init(color: .black, location: 0),
-                        .init(color: .black, location: 1 - sideFade),
-                        .init(color: .black.opacity(sideFade > 0 ? 0 : 1), location: 1)
-                    ], startPoint: .leading, endPoint: .trailing)
-                }
-                // The map's leading edge stays at the window's, with the Maps attribution.
-                .position(x: width / 2, y: bottom - height / 2)
-                .onAppear { engine.layoutDidChange(frame: layout.mapFrame) }
-                .onChange(of: layout) { engine.layoutDidChange(frame: layout.mapFrame) }
-                .animation(.smooth(duration: 0.6), value: orbitBottomInset)
-                .task(id: PrewarmRequest(cities: cities.map(\.id), frame: layout.mapFrame)) {
-                    // Give the visible globe a head start, and let a window resize settle.
-                    try? await Task.sleep(for: .seconds(1.5))
-                    guard !Task.isCancelled else { return }
-                    GlobeImageryPrewarmer.shared.prewarm(cities, frame: layout.mapFrame,
-                                                         orbitDistance: engine.orbitDistance,
-                                                         startLongitude: engine.longitude)
-                }
+                map
+                    // MapKit doesn't follow inset changes while the camera moves every frame, so the
+                    // insets stay fixed. On iPhone the frame stays put too, and the camera does the
+                    // framing; beside a side pane the frame grows, and the engine scales the camera
+                    // distance with its height so the zoom still follows its curve.
+                    .safeAreaPadding(.vertical, layout.inset)
+                    .frame(width: width, height: height)
+                    .opacity(engine.mapOpacity)
+                    // A fitted map (side-by-side layouts) softens its top edge in orbit and its edge under
+                    // the pane, so MapKit's space blends into the starfield behind it.
+                    .mask {
+                        LinearGradient(stops: [
+                            .init(color: fillsScreen ? .black : .black.opacity(blend), location: 0),
+                            .init(color: .black, location: fillsScreen ? 0 : 0.12 * (1 - blend)),
+                            .init(color: .black, location: 1)
+                        ], startPoint: .top, endPoint: .bottom)
+                    }
+                    .mask {
+                        LinearGradient(stops: [
+                            .init(color: .black, location: 0),
+                            .init(color: .black, location: 1 - sideFade),
+                            .init(color: .black.opacity(sideFade > 0 ? 0 : 1), location: 1)
+                        ], startPoint: .leading, endPoint: .trailing)
+                    }
+                    // The map's leading edge stays at the window's, with the Maps attribution.
+                    .position(x: width / 2, y: bottom - height / 2)
+                    .onAppear { engine.layoutDidChange(frame: layout.mapFrame) }
+                    .onChange(of: layout) { engine.layoutDidChange(frame: layout.mapFrame) }
+                    .animation(.smooth(duration: 0.6), value: orbitBottomInset)
+                    .task(id: PrewarmRequest(cities: cities.map(\.id), frame: layout.mapFrame)) {
+                        // Give the visible globe a head start, and let a window resize settle.
+                        try? await Task.sleep(for: .seconds(1.5))
+                        guard !Task.isCancelled else { return }
+                        GlobeImageryPrewarmer.shared.prewarm(cities, frame: layout.mapFrame,
+                                                             orbitDistance: engine.orbitDistance,
+                                                             startLongitude: engine.longitude)
+                    }
+            }
         }
         .onAppear {
             engine.reduceMotion = reduceMotion
@@ -168,7 +170,7 @@ struct GlobeView: View {
         init(size: CGSize, orbitBottomInset: CGFloat, attributionBottomInset: CGFloat, detailBottomInset: CGFloat,
              detailTopInset: CGFloat, trailingPaneWidth: CGFloat, showsTrailingPane: Bool, fillsScreen: Bool) {
             let paneWidth = showsTrailingPane ? trailingPaneWidth : 0
-            width = size.width - paneWidth
+            width = max(1, size.width - paneWidth)
             extraWidth = paneWidth
 
             // The Maps attribution sits just above the cards.

@@ -8,7 +8,10 @@ struct AddCitySheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
     @State private var results: [MKMapItem] = []
-    @State private var isSearching = false
+    /// The last search that finished, and whether MapKit couldn't complete it. "No Results"
+    /// waits for a finished search, so it doesn't flash while you're still typing.
+    @State private var searchedQuery = ""
+    @State private var searchFailed = false
     @State private var resolvingItem: MKMapItem?
     @State private var errorMessage: String?
     @FocusState private var searchFocused: Bool
@@ -38,101 +41,101 @@ struct AddCitySheet: View {
     ]
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                searchField
-                    .padding(.horizontal, 20)
-                    .padding(.top, 10)
-
-                if isSearching && results.isEmpty {
-                    ProgressView().padding(.top, 20)
-                    Spacer()
-                } else if !results.isEmpty {
-                    resultsList
-                } else if searchText.trimmingCharacters(in: .whitespaces).count >= 2 && !isSearching {
-                    ContentUnavailableView.search(text: searchText)
-                    Spacer()
-                } else {
-                    suggestions
+        SheetNavigationStack {
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                #if os(macOS)
+                // A search field needs a toolbar on the Mac, so the sheet has its own under the title.
+                .macSheetHeader(Text("Pin New City")) {
+                    MacSearchField(text: $searchText, prompt: Text("Search Cities"), isFocused: $searchFocused)
                 }
-            }
-            .background(SheetBackground())
-            .navigationTitle("Pin New City")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(role: .close) { dismiss() }
+                .macSheetFooter {
+                    Button(role: .cancel) { dismiss() }
+                        .keyboardShortcut(.cancelAction)
                 }
-            }
-            .task(id: searchText) { await search(searchText) }
-            .alert("Couldn't Add City", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(errorMessage ?? "")
-            }
-            .onAppear { searchFocused = true }
+                #else
+                .navigationTitle("Pin New City")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(role: .close) { dismiss() }
+                    }
+                }
+                .searchable(text: $searchText, placement: Self.searchPlacement, prompt: Text("Search Cities"))
+                .searchFocused($searchFocused)
+                #endif
+                .background(SheetBackground())
+                .autocorrectionDisabled()
+                .task(id: searchText) { await search(searchText) }
+                .alert("Couldn’t Add City", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(errorMessage ?? "")
+                }
+                .onAppear { searchFocused = true }
         }
     }
 
-    private var searchField: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("Search cities", text: $searchText)
-                .textFieldStyle(.plain)
-                .focused($searchFocused)
-                .submitLabel(.search)
-                .autocorrectionDisabled()
-            if !searchText.isEmpty {
-                Button {
-                    searchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
+    #if !os(macOS)
+    /// The search field sits under the title on iPhone and iPad, and where the system puts it on Vision Pro.
+    private static var searchPlacement: SearchFieldPlacement {
+        #if os(iOS)
+        .navigationBarDrawer(displayMode: .always)
+        #else
+        .automatic
+        #endif
+    }
+    #endif
+
+    private var trimmedQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        let query = trimmedQuery
+        if query.count < 2 {
+            suggestions
+        } else if !results.isEmpty {
+            // Earlier results stay up while a longer query loads.
+            resultsList
+        } else if searchedQuery == query, searchFailed {
+            ContentUnavailableView {
+                Label("Can’t Search Right Now", systemImage: "wifi.slash")
+            } description: {
+                Text("Check your connection and try again.")
             }
+        } else if searchedQuery == query {
+            ContentUnavailableView.search(text: query)
+        } else {
+            ProgressView()
+                .padding(.top, 40)
         }
-        .padding(14)
-        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private var resultsList: some View {
-        List(results, id: \.self) { item in
-            let alreadyPinned = isPinned(latitude: item.location.coordinate.latitude, longitude: item.location.coordinate.longitude)
-            Button {
-                Task { await add(item) }
-            } label: {
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(Self.cityName(for: item))
-                            .font(.headline)
-                        Text(item.addressRepresentations?.cityWithContext ?? item.addressRepresentations?.regionName ?? "")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+        ScrollView {
+            LazyVStack(spacing: 14) {
+                ForEach(results, id: \.self) { item in
+                    let coordinate = item.location.coordinate
+                    CityRow(
+                        name: Self.cityName(for: item),
+                        detail: item.addressRepresentations?.cityWithContext ?? item.addressRepresentations?.regionName ?? "",
+                        timeZone: item.timeZone,
+                        isPinned: isPinned(latitude: coordinate.latitude, longitude: coordinate.longitude),
+                        isResolving: resolvingItem == item
+                    ) {
+                        Task { await add(item) }
                     }
-                    Spacer()
-                    if resolvingItem == item {
-                        ProgressView()
-                    } else {
-                        Image(systemName: alreadyPinned ? "checkmark.circle.fill" : "plus.circle")
-                            .font(.title3)
-                            .foregroundStyle(alreadyPinned ? .secondary : Color.cyan)
-                    }
+                    .disabled(resolvingItem != nil)
                 }
-                .padding(.vertical, 4)
-                .contentShape(.rect)
             }
-            .buttonStyle(.plain)
-            .disabled(alreadyPinned || resolvingItem != nil)
-            .listRowBackground(Color.clear)
-            .accessibilityHint(alreadyPinned ? Text("Already pinned") : Text("Pins this city"))
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 30)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
         .dismissesKeyboardOnScroll()
     }
 
@@ -140,43 +143,25 @@ struct AddCitySheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 SectionHeader(title: "Suggestions", systemImage: "globe")
-                    .padding(.horizontal, 20)
 
                 ForEach(popularCities, id: \.name) { suggestion in
-                    let alreadyPinned = isPinned(latitude: suggestion.lat, longitude: suggestion.lon)
-                    Button {
+                    CityRow(
+                        name: suggestion.name,
+                        detail: suggestion.localizedCountry,
+                        timeZone: TimeZone(identifier: suggestion.tz),
+                        isPinned: isPinned(latitude: suggestion.lat, longitude: suggestion.lon)
+                    ) {
                         onAddCity(PinnedCity(
                             name: suggestion.name, country: suggestion.localizedCountry, countryCode: suggestion.code,
                             latitude: suggestion.lat, longitude: suggestion.lon,
                             timeZoneIdentifier: suggestion.tz
                         ))
                         dismiss()
-                    } label: {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(suggestion.name).font(.headline)
-                                Text(suggestion.localizedCountry).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if let tz = TimeZone(identifier: suggestion.tz) {
-                                Text(TimeZoneMath.badge(forOffset: TimeZoneMath.offset(of: tz, at: .now)))
-                                    .font(.footnote)
-                                    .monospacedDigit()
-                                    .foregroundStyle(.secondary)
-                            }
-                            Image(systemName: alreadyPinned ? "checkmark.circle.fill" : "plus.circle.fill")
-                                .font(.title3)
-                                .foregroundStyle(alreadyPinned ? .secondary : Color.cyan)
-                        }
-                        .padding(14)
-                        .contentCard(cornerRadius: 18)
-                        .contentShape(.rect(cornerRadius: 18))
                     }
-                    .buttonStyle(.plain)
-                    .disabled(alreadyPinned)
-                    .padding(.horizontal, 20)
                 }
             }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
             .padding(.bottom, 30)
         }
         .dismissesKeyboardOnScroll()
@@ -188,15 +173,14 @@ struct AddCitySheet: View {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= 2 else {
             results = []
-            isSearching = false
+            searchedQuery = ""
+            searchFailed = false
             return
         }
-        // Debounce typing.
+        // Wait for a pause in typing.
         try? await Task.sleep(for: .milliseconds(300))
         guard !Task.isCancelled else { return }
 
-        isSearching = true
-        defer { isSearching = false }
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = trimmed
         request.resultTypes = .address
@@ -205,10 +189,14 @@ struct AddCitySheet: View {
             let response = try await MKLocalSearch(request: request).start()
             guard !Task.isCancelled else { return }
             results = response.mapItems
+            searchFailed = false
         } catch {
             guard !Task.isCancelled else { return }
             results = []
+            // MapKit reports "nothing found" as an error too; that's an ordinary empty result.
+            searchFailed = (error as? MKError)?.code != .placemarkNotFound
         }
+        searchedQuery = trimmed
     }
 
     private func add(_ item: MKMapItem) async {
@@ -221,7 +209,7 @@ struct AddCitySheet: View {
             timeZone = try? await request.mapItems.first?.timeZone
         }
         guard let timeZone else {
-            errorMessage = String(localized: "WanderClock couldn't find the time zone for \(Self.cityName(for: item)). Check your connection and try again.")
+            errorMessage = String(localized: "WanderClock couldn’t find the time zone for \(Self.cityName(for: item)). Check your connection and try again.")
             return
         }
 
@@ -244,5 +232,53 @@ struct AddCitySheet: View {
 
     private static func cityName(for item: MKMapItem) -> String {
         item.addressRepresentations?.cityName ?? item.name ?? String(localized: "City")
+    }
+}
+
+/// One city to pin, as a card: its name and region, how far its clock is from yours, and a
+/// plus (or a check once it's pinned). Suggestions and search results share it.
+private struct CityRow: View {
+    let name: String
+    let detail: String
+    let timeZone: TimeZone?
+    let isPinned: Bool
+    var isResolving = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(.headline)
+                    if !detail.isEmpty {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 8)
+                if let timeZone {
+                    Text(TimeZoneMath.badge(forOffset: TimeZoneMath.offset(of: timeZone, at: .now)))
+                        .font(.footnote)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                if isResolving {
+                    ProgressView()
+                } else {
+                    Image(systemName: isPinned ? "checkmark.circle.fill" : "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(isPinned ? .secondary : .primary)
+                }
+            }
+            .padding(14)
+            .contentCard(cornerRadius: 18)
+            .contentShape(.rect(cornerRadius: 18))
+        }
+        .buttonStyle(.plain)
+        .disabled(isPinned)
+        .accessibilityHint(isPinned ? Text("Already pinned") : Text("Pins this city"))
     }
 }
