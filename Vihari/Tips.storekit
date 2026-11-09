@@ -1,0 +1,81 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [ ]
+  },
+  "identifier" : "VihariTips",
+  "nonRenewingSubscriptions" : [ ],
+  "products" : [
+    {
+      "displayPrice" : "1",
+      "familyShareable" : false,
+      "internalID" : "1001",
+      "localizations" : [
+        {
+          "description" : "A warm token of appreciation",
+          "displayName" : "Coffee Tip",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.dhirajkrishnasimhadri.Vihari.donation.1",
+      "referenceName" : "Tip $1",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "5",
+      "familyShareable" : false,
+      "internalID" : "1002",
+      "localizations" : [
+        {
+          "description" : "Helps fuel ongoing updates and polish",
+          "displayName" : "Generous Tip",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.dhirajkrishnasimhadri.Vihari.donation.5",
+      "referenceName" : "Tip $5",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "10",
+      "familyShareable" : false,
+      "internalID" : "1003",
+      "localizations" : [
+        {
+          "description" : "Supports independent app development",
+          "displayName" : "Super Tip",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.dhirajkrishnasimhadri.Vihari.donation.10",
+      "referenceName" : "Tip $10",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "20",
+      "familyShareable" : false,
+      "internalID" : "1004",
+      "localizations" : [
+        {
+          "description" : "Champions future features and design",
+          "displayName" : "World Supporter",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.dhirajkrishnasimhadri.Vihari.donation.20",
+      "referenceName" : "Tip $20",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [ ]
+  },
+  "subscriptionGroups" : [ ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
